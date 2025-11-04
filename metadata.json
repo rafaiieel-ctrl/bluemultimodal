@@ -1,0 +1,7 @@
+{
+  "name": " Blue Multimodal 1.1.1",
+  "description": "Sistema de gestão de logística multimodal.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
