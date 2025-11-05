@@ -1,126 +1,138 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Theme, AppNotification } from '../../types';
+import React, { useState, useMemo, useRef } from 'react';
+import { Theme, View } from '../../types';
 import { ThemeToggle } from './ThemeToggle';
-import { HomeIcon, ShipIcon, BarChart3Icon, ClipboardPasteIcon, ChevronLeftIcon, GlobeIcon, DatabaseIcon, LockIcon, FileTextIcon, WarehouseIcon, DollarSignIcon, BriefcaseIcon, Settings2Icon, BellIcon, XIcon } from '../ui/icons';
-import { NotificationPopover } from '../notifications/NotificationPopover';
-import { Button } from '../ui/Button';
+import { GlobeIcon, DatabaseIcon, BarChart3Icon, ClipboardPasteIcon, BellIcon, UserIcon, Settings2Icon, PencilIcon, GripVerticalIcon, LogOutIcon } from '../ui/icons';
 
-interface HeaderProps {
-    theme: Theme;
-    setTheme: (theme: Theme) => void;
-    isMobileMenuOpen: boolean;
-    setIsMobileMenuOpen: (visible: boolean) => void;
-    onLock: () => void;
-    notifications: AppNotification[];
-    setNotifications: React.Dispatch<React.SetStateAction<AppNotification[]>>;
-}
-
-const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: <BarChart3Icon /> },
-    { path: '/planning', label: 'Planejamento', icon: <GlobeIcon /> },
-    { path: '/operations-hub', label: 'Operações', icon: <HomeIcon /> },
-    { path: '/stock-control', label: 'Estoque', icon: <WarehouseIcon /> },
-    { path: '/cost-control', label: 'Custos', icon: <DollarSignIcon /> },
-    { path: '/registration-hub', label: 'Cadastros', icon: <DatabaseIcon /> },
-    { path: '/backoffice', label: 'Backoffice', icon: <BriefcaseIcon /> },
-    { path: '/settings', label: 'Configurações', icon: <Settings2Icon /> },
-    { path: '/reports', label: 'Relatórios', icon: <FileTextIcon /> },
+const ALL_NAV_ITEMS: { view: View; label: string; icon: React.ReactElement }[] = [
+    { view: 'planningHub', label: 'Planejamento', icon: <GlobeIcon /> },
+    { view: 'operationsHub', label: 'Operações', icon: <ClipboardPasteIcon /> },
+    { view: 'registrationHub', label: 'Cadastros', icon: <DatabaseIcon /> },
+    { view: 'dashboard', label: 'Dashboard', icon: <BarChart3Icon /> },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ theme, setTheme, isMobileMenuOpen, setIsMobileMenuOpen, onLock, notifications, setNotifications }) => {
-    const [isPopoverOpen, setIsPopoverOpen] = useState(false);
-    const popoverRef = useRef<HTMLDivElement>(null);
-    const location = useLocation();
+interface HeaderProps {
+    onHome: () => void;
+    theme: Theme;
+    setTheme: (theme: Theme) => void;
+    setView: (view: View) => void;
+    activeView: View;
+    navOrder: View[];
+    setNavOrder: (order: View[]) => void;
+    onLogout: () => void;
+}
 
-    const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
+export const Header: React.FC<HeaderProps> = ({ onHome, theme, setTheme, setView, activeView, navOrder, setNavOrder, onLogout }) => {
+    const [isEditMode, setIsEditMode] = useState(false);
+    const dragItem = useRef<View | null>(null);
+    const dragOverItem = useRef<View | null>(null);
 
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
-                setIsPopoverOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    const orderedNavItems = useMemo(() => {
+        return navOrder
+            .map(view => ALL_NAV_ITEMS.find(item => item.view === view))
+            .filter((item): item is NonNullable<typeof item> => !!item);
+    }, [navOrder]);
 
-    const togglePopover = () => {
-        setIsPopoverOpen(prev => !prev);
+    const handleDragStart = (e: React.DragEvent<HTMLButtonElement>, view: View) => {
+        dragItem.current = view;
+        e.dataTransfer.effectAllowed = 'move';
     };
 
-    const handleNavItemClick = () => {
-        setIsMobileMenuOpen(false);
+    const handleDragEnter = (e: React.DragEvent<HTMLButtonElement>, view: View) => {
+        dragOverItem.current = view;
+    };
+    
+    const handleDrop = () => {
+        if (dragItem.current && dragOverItem.current) {
+            const newNavOrder = [...navOrder];
+            const dragItemIndex = newNavOrder.indexOf(dragItem.current);
+            const dragOverItemIndex = newNavOrder.indexOf(dragOverItem.current);
+
+            if (dragItemIndex === -1 || dragOverItemIndex === -1) return;
+
+            const [reorderedItem] = newNavOrder.splice(dragItemIndex, 1);
+            newNavOrder.splice(dragOverItemIndex, 0, reorderedItem);
+            
+            setNavOrder(newNavOrder);
+        }
+        dragItem.current = null;
+        dragOverItem.current = null;
     };
 
     return (
-        <aside className={`
-            fixed top-0 left-0 h-full w-20 bg-card border-r border-border 
-            flex flex-col items-center py-6 z-50 
-            transition-transform duration-300 ease-in-out 
-            -translate-x-full md:translate-x-0 
-            ${isMobileMenuOpen ? '!translate-x-0' : ''}
-        `}>
-            
-            <div className="absolute top-2 right-2 md:hidden">
-                <Button variant="ghost" size="sm" className="!p-2" onClick={() => setIsMobileMenuOpen(false)}>
-                    <XIcon className="h-5 w-5" />
-                </Button>
+        <aside className="fixed top-0 left-0 h-full w-20 bg-card border-r border-border flex flex-col items-center py-4 z-50">
+            <div className="p-3 mb-4 rounded-lg bg-primary text-primary-foreground text-xl font-bold">
+                M
             </div>
-            
-            <nav className="flex flex-col items-center gap-4 mt-12 md:mt-0">
-                {navItems.map(item => {
-                    const isActive = location.pathname.startsWith(item.path);
-                    return (
-                        <Link 
-                            key={item.path}
-                            to={item.path}
-                            onClick={handleNavItemClick}
-                            title={item.label}
-                            className={`
-                                p-3 rounded-lg transition-all duration-200
-                                ${isActive 
-                                    ? 'bg-primary text-primary-foreground shadow-lg' 
-                                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'}
-                            `}
-                        >
-                            {React.cloneElement(item.icon as React.ReactElement<{ className?: string }>, { className: 'h-6 w-6' })}
-                        </Link>
-                    );
-                })}
+
+            <nav className="flex flex-col items-center gap-2">
+                {orderedNavItems.map(item => (
+                    <button 
+                        key={item.view}
+                        draggable={isEditMode}
+                        onDragStart={isEditMode ? (e) => handleDragStart(e, item.view) : undefined}
+                        onDragEnter={isEditMode ? (e) => handleDragEnter(e, item.view) : undefined}
+                        onDragEnd={isEditMode ? handleDrop : undefined}
+                        onDragOver={isEditMode ? (e) => e.preventDefault() : undefined}
+                        onClick={() => {
+                            if (isEditMode) return;
+                            if (item.view === 'planningHub') {
+                                onHome();
+                            } else {
+                                setView(item.view);
+                            }
+                        }}
+                        title={item.label}
+                        className={`
+                            p-3 rounded-lg transition-all duration-200 w-14 h-12 flex items-center justify-center relative
+                            ${activeView === item.view 
+                                ? 'bg-primary text-primary-foreground shadow-lg' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-foreground'}
+                            ${isEditMode ? 'cursor-move' : 'cursor-pointer'}
+                        `}
+                    >
+                        {isEditMode && <GripVerticalIcon className="absolute left-0.5 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50"/>}
+                        {React.cloneElement(item.icon as React.ReactElement<{ className?: string }>, { className: 'h-6 w-6' })}
+                    </button>
+                ))}
             </nav>
 
             <div className="mt-auto flex flex-col items-center gap-2">
-                 <div className="relative">
-                    <button 
-                        onClick={togglePopover}
-                        title="Notificações" 
-                        className="p-3 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                    >
-                        <BellIcon className="h-5 w-5" />
-                        {unreadCount > 0 && (
-                            <span className="absolute top-1 right-1 flex h-4 w-4">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-xs items-center justify-center">{unreadCount}</span>
-                            </span>
-                        )}
-                    </button>
-                    {isPopoverOpen && (
-                        <div ref={popoverRef}>
-                            <NotificationPopover 
-                                notifications={notifications} 
-                                setNotifications={setNotifications}
-                                onClose={() => setIsPopoverOpen(false)}
-                            />
-                        </div>
-                    )}
-                </div>
-                <button 
-                    onClick={onLock} 
-                    title="Bloquear e Sair" 
+                 <button 
+                    onClick={() => setIsEditMode(!isEditMode)}
+                    title={isEditMode ? "Sair do modo de edição" : "Personalizar layout"} 
+                    className={`
+                        p-3 rounded-lg transition-all duration-200
+                        ${isEditMode 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'}
+                    `}
+                >
+                    <PencilIcon className="h-5 w-5" />
+                </button>
+                 <button title="Notificações" className="p-3 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+                    <BellIcon className="h-5 w-5" />
+                </button>
+                 <button title="Perfil" className="p-3 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+                    <UserIcon className="h-5 w-5" />
+                </button>
+                 <button 
+                    onClick={() => setView('settings')}
+                    title="Configurações" 
+                    className={`
+                        p-3 rounded-lg transition-all duration-200
+                        ${activeView === 'settings' 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'}
+                    `}
+                >
+                    <Settings2Icon className="h-5 w-5" />
+                </button>
+                 <button 
+                    onClick={onLogout}
+                    title="Sair / Bloquear" 
                     className="p-3 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                 >
-                    <LockIcon className="h-5 w-5" />
+                    <LogOutIcon className="h-5 w-5" />
                 </button>
                 <ThemeToggle theme={theme} setTheme={setTheme} />
             </div>

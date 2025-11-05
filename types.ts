@@ -1,15 +1,10 @@
-
-
 export type ProductType = 'anidro' | 'hidratado' | 'granel';
-export type GoalProductType = ProductType | 'etanol-mix';
 export type ModalType = 'rodoviario' | 'fluvial' | 'ferroviario' | 'terra' | 'maritimo' | 'aereo' | 'dutoviario';
 export type OperationType = 'recebimento' | 'expedicao' | 'transferencia';
 export type Theme = 'light' | 'dark' | 'system';
+export type View = 'login' | 'operation' | 'operationsHub' | 'dashboard' | 'vesselDetail' | 'planningHub' | 'registrationHub' | 'tankWagonDetail' | 'tankWagonImport' | 'settings';
 export type OperationStatus = 'pendente' | 'em_andamento' | 'concluida' | 'cancelada';
 export type Incoterm = 'EXW' | 'FOB' | 'CIF' | 'DDP' | 'DAP' | 'CPT';
-// FIX: Added 'AGUARDANDO CARREGAMENTO' to align with its usage across the application.
-export type ScheduleStatus = 'PLANEJADO' | 'AGUARDANDO CARREGAMENTO' | 'EM CARREGAMENTO' | 'EM TRÂNSITO' | 'CONCLUÍDO' | 'ATRASADO' | 'CANCELADO';
-
 
 export interface TankResults {
     r20: number;
@@ -52,15 +47,7 @@ export interface OperationDetails {
     terminal: string;
     local: string;
     dateTime: string;
-    operationStartDate?: string;
     status: OperationStatus;
-    observations?: string;
-    // For schedule integration
-    ata?: string;
-    atb?: string;
-    ats?: string;
-    atcFinish?: string;
-    atd?: string;
 }
 
 export interface Signatures {
@@ -72,8 +59,7 @@ export interface Signatures {
 // New types for the detailed vessel scheduling screen
 export type VesselOpType = 'Balsa' | 'Navio';
 export type VesselPerformanceStatus = 'NO PRAZO' | 'ATRASADO' | 'ADIANTADO';
-// FIX: Added 'AGUARDANDO CARREGAMENTO' to align with its usage in components like OperationProgressBar.
-export type VesselScheduleLifecycleStatus = 'PLANEJADO' | 'AGUARDANDO CARREGAMENTO' | 'EM CARREGAMENTO' | 'EM TRÂNSITO' | 'AGUARDANDO DESCARGA' | 'EM DESCARGA' | 'CONCLUÍDO';
+export type VesselScheduleLifecycleStatus = 'PLANEJADO' | 'EM CARREGAMENTO' | 'EM TRÂNSITO' | 'AGUARDANDO DESCARGA' | 'EM DESCARGA' | 'CONCLUÍDO';
 
 
 export interface ScheduledTankInOp {
@@ -99,30 +85,18 @@ export interface DischargeEvent {
     measurements: DischargeTankMeasurement[];
 }
 
-export interface FluvialRateio {
-    id: number;
-    cliente: string;
-    pedido: string;
-    volume: number;
-    localDescarga: string;
-    terminalDescarga: string;
-    etaDestino?: string;
-    etbDestino?: string;
-}
-
 export interface VesselSchedule {
     id: number;
-    planningGoalId?: number; // Link to a high-level planning goal
     status: VesselScheduleLifecycleStatus;
     product: ProductType;
-    rateios: FluvialRateio[];
+    orders?: string[];
     incoterm?: Incoterm;
 
     // Identificação
     vesselType: VesselOpType;
-    vesselId?: number;
     vesselName: string;
     port: string;
+    client: string;
 
     // Previsão (Planejado)
     eta?: string; // date-time string
@@ -132,8 +106,6 @@ export interface VesselSchedule {
     etd?: string;
     plannedVolume?: string; // number as string
     plannedTransitTimeDays?: string; // number as string
-    roadTransitTimeDays?: string;
-    roadDepartureDate?: string;
 
     // Realizado (Fato)
     ata?: string;
@@ -150,154 +122,6 @@ export interface VesselSchedule {
     releaseDensity?: string;
     releaseInpm?: string;
     occurrences?: string;
-}
-
-// --- Transshipment Route Leg ---
-export interface RouteLeg {
-    id: number;
-    modal: ModalType;
-    origin: string;
-    destination: string;
-}
-
-
-// --- High-level Planning Goal ---
-export interface MetaPlanejamento {
-    id: number;
-    parentId: number | null;
-    modal: ModalType;
-    title: string;
-    period: 'ANUAL' | 'MENSAL' | 'SEMANAL' | 'DIARIO';
-    description: string;
-    product: GoalProductType;
-    
-    type: 'DIRETO' | 'TRANSBORDO';
-    route?: RouteLeg[]; // For TRANSBORDO type
-
-    origin: string;
-    destination: string;
-    totalVolume: number;
-    volumeAnidro?: number;
-    volumeHidratado?: number;
-    startDate: string; // YYYY-MM-DD
-    endDate: string; // YYYY-MM-DD
-    status: 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDO';
-}
-
-
-// --- New Schedule Types for other modals ---
-export interface FerroviarioRateio {
-    id: number;
-    cliente: string;
-    pedido: string;
-    tipo_pedido: 'remessa' | 'venda';
-    qtd_vagoes: string;
-    volume_pedido: string;
-    volume_consumido: string;
-}
-
-export type VagaoStatus = 'AGUARDANDO' | 'EM CARREGAMENTO' | 'CARREGADO' | 'REPROVADO';
-
-export interface Anexo {
-    name: string;
-    dataUrl: string; // base64 data URL
-}
-
-export interface Vagao {
-    id: number;
-    numero: string;
-    status: VagaoStatus;
-    volumeObservado?: string;
-    pesoCarregado?: string; // For non-tank cars
-    temperatura?: string;
-    densidade?: string;
-    fcv?: string;
-    lacre?: string;
-    anexoNotaRemessa?: Anexo;
-    anexoNotaEmitida?: Anexo;
-    cteNumero?: string;
-    anexoCte?: Anexo;
-    notaRetorno?: string;
-    volumeNotaRetorno?: string;
-    volumeNotaEmitida?: string;
-    rateioId: number;
-    timestampCarregamento?: string;
-}
-
-export interface FerroviarioSchedule {
-    id: number;
-    planningGoalId?: number;
-    status: ScheduleStatus;
-    composicao: string;
-    qtd_vagoes: string;
-    produto: ProductType;
-    tipo_veiculo: 'vagao-tanque' | 'vagao-granel' | 'vagao-container';
-    origem: string;
-    destino: string;
-    janela_carregamento_prevista: string;
-    saida_prevista: string;
-    chegada_prevista: string;
-    volume_previsto: string;
-    volume_real: string;
-    rateios: FerroviarioRateio[];
-    vagoes: Vagao[];
-}
-
-export interface RodoviarioSchedule {
-    id: number;
-    status: ScheduleStatus;
-    placa: string;
-    transportadora: string;
-    motorista: string;
-    produto: ProductType;
-    origem: string;
-    destino: string;
-    janela_carregamento_prevista: string;
-    chegada_real: string;
-    liberacao_real: string;
-    volume_previsto: string;
-    volume_real: string;
-}
-
-export interface DutoviarioSchedule {
-    id: number;
-    empresa_solicitante: string;
-    base_destino: string;
-    usina_origem: string;
-    cliente_final: string;
-    pedido_remessa_armazenagem?: string;
-    pedido_venda_cliente?: string;
-    data_agendamento_desejada: string; // YYYY-MM-DD
-    periodo_agendamento_desejada: 'MANHÃ' | 'TARDE' | 'NOITE' | 'COMERCIAL' | '';
-    volume_solicitado: string; // number as string
-    status: ScheduleStatus;
-}
-
-export interface AereoSchedule {
-    id: number;
-    status: ScheduleStatus;
-    aeroporto_origem: string;
-    aeroporto_destino: string;
-    voo: string;
-    previsao_embarque: string;
-    previsao_chegada: string;
-    volume_carga_prevista: string;
-}
-
-// A unified interface to represent any scheduled operation
-export interface UnifiedSchedule {
-  uid: string;
-  modal: 'fluvial' | 'rodoviario' | 'ferroviario' | 'dutoviario' | 'aereo' | 'manual';
-  vesselType?: VesselOpType;
-  title: string;
-  description: string;
-  status: VesselScheduleLifecycleStatus | ScheduleStatus;
-  originalId: number;
-  onStartLoading?: (id: number) => void;
-  onRegisterArrival?: (id: number) => void;
-  onStartDischarge?: (id: number) => void;
-  onView?: (id: number) => void;
-  onFinalizeTrip?: (id: number) => void;
 }
 
 
@@ -330,6 +154,7 @@ export interface Vessel {
     certificateNumber: string;
     issueDate: string; // Stored as 'YYYY-MM-DD'
     expiryDate: string; // Stored as 'YYYY-MM-DD'
+    vettingExpiryDate?: string; // Stored as 'YYYY-MM-DD'
     executor: string;
     notes?: string; // For OBSERVACOES
     tanks: VesselTank[];
@@ -379,91 +204,68 @@ export interface SimpleAsset {
     type: SimpleAssetType;
     name: string; // e.g., TQ-101, V-F-555
     capacity?: number;
-    unit?: 'L' | 'Kg';
+    unit?: 'liters' | 'kg';
     locationId?: number; // Link to a Location
 }
 
-// --- New types for Stock Control ---
-export type StockTransactionType = 'entrada' | 'saida';
-
-export interface StockTransaction {
-    id: number;
-    locationId: number;
-    product: ProductType;
-    type: StockTransactionType;
-    quantity: number; // Always positive. Sign is determined by `type`.
-    unit: 'L' | 'Kg';
-    timestamp: string;
-    notes?: string;
+// --- New types for Tank Wagons ---
+export interface TankWagonCalibrationPoint {
+    emptySpaceMm: number;
+    volumeL: number;
 }
 
-// --- New types for Cost Control ---
-export type CostCategory = 'frete' | 'armazenagem' | 'taxas' | 'seguro' | 'outros' | 'demurrage';
-
-export interface CostItem {
+export interface TankWagon {
     id: number;
-    operationUid: string; // To link to a UnifiedSchedule
-    category: CostCategory;
-    description: string;
-    budgetedAmount: number;
-    actualAmount: number;
-    date: string; // YYYY-MM-DD
+    name: string; // ID e.g. TCT 034.467-2 (WAGON_MODEL)
+    inmetroNumber?: string;
+    brand?: string;
+    calibrationDate?: string; // YYYY-MM-DD
+    certificateNumber?: string;
+    validUntil?: string; // YYYY-MM-DD
+    calibrationTable: TankWagonCalibrationPoint[];
 }
 
-// --- New type for Unit Cost Control ---
-export interface UnitCost {
-    id: number;
-    category: CostCategory;
-    modal: ModalType | 'geral';
-    description: string;
-    budgetedAmount: number; // Cost per m³
-}
+// --- New Types for Tank Wagon CSV Import ---
 
+export type CalibrationStep = {
+    step: number;
+    volume_L: number;
+    ullage_mm: number;
+};
 
-// --- New types for Backoffice ---
-export type OrderStatus = 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDO' | 'CANCELADO';
+export type CalibrationRow = {
+  CERT_TYPE: string;
+  CERT_NUMBER: string;
+  ISSUER: string;
+  ISSUE_DATE: string;       // YYYY-MM-DD
+  VALID_UNTIL: string;      // YYYY-MM-DD
+  DOC: string; EXE: string; METROL: string;
+  STATUS: string;
+  OWNER_NAME: string; OWNER_CNPJ: string;
+  OWNER_STREET: string; OWNER_NUM: string; OWNER_DIST: string; OWNER_CITY: string; OWNER_STATE: string; OWNER_ZIP: string; OWNER_PHONE: string;
+  WAGON_MFR: string; WAGON_MODEL: string; WAGON_YEAR: string; WAGON_SERIAL: string; INMETRO_ID: string; REGISTRATION: string;
+  DIAMETER_MM: number; LENGTH_MM: number;
+  DOMO_TYPE: string; DOMO_HREF_MM: number | "" | null;
+  CAL_MEDIUM: string; REF_TEMP_C: number;
+  ULLAGE_EMPTY_MM: number; ULLAGE_FULL_MM: number; ULLAGE_TOTAL_MM: number;
+  NOMINAL_CAP_L: number;
+  TANK_STEPS_JSON: string;  // JSON array of CalibrationStep
+  DOMO_STEPS_JSON: string;  // JSON array of CalibrationStep
+  LAB_NAME: string; RBC_CODE: string; TECHNICIAN: string; RESP_TECH: string; SIGN_DATE: string; OBS: string;
+};
 
-export interface Order {
-    id: number;
-    orderNumber: string;
-    clientName: string;
-    product: ProductType;
-    volume: number;
-    unit: 'L' | 'Kg';
-    origin: string;
-    destination: string;
-    creationDate: string; // YYYY-MM-DD
-    status: OrderStatus;
-    notes?: string;
-}
-
-// --- Notification System Types ---
-export interface AppNotification {
-    id: number;
-    timestamp: string;
-    type: 'info' | 'warning' | 'error';
-    title: string;
+export interface ValidationError {
+    line: number;
+    field: keyof CalibrationRow | 'general';
     message: string;
-    isRead: boolean;
+    severity: 'error' | 'warning';
 }
 
-export interface NotificationSettings {
-    email: string;
-    notifyOnOperationConcluded: boolean;
-    notifyOnVesselDelayed: boolean;
-    notifyOnCertificateExpires: boolean;
-}
-
-// --- App-wide Settings ---
-export type VolumeUnit = 'L' | 'm³';
-export type MassUnit = 'Kg' | 't';
-
-export interface UnitSettings {
-    volume: VolumeUnit;
-    mass: MassUnit;
-}
-
-export interface AppSettings {
-    notifications: NotificationSettings;
-    units: UnitSettings;
+export interface ImportReport {
+    filename: string;
+    totalRows: number;
+    imported: number;
+    skipped: number;
+    errors: ValidationError[];
+    warnings: ValidationError[];
 }

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Vessel, VesselTank, CalibrationPoint, MeasurementLog, MeasurementOperationType, EquipmentType } from '../types';
 import { analyzeGaugingCertificate } from '../services/geminiService';
@@ -6,11 +5,10 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
-import { Loader2Icon, Wand2Icon, PlusCircleIcon, Trash2Icon, XIcon, ChevronDownIcon, ChevronUpIcon } from '../components/ui/icons';
+import { Loader2Icon, Wand2Icon, PlusCircleIcon, Trash2Icon, XIcon } from '../components/ui/icons';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { Textarea } from '../components/ui/Textarea';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
-import { numberToBr, brToNumber } from '../utils/helpers';
 
 // --- HELPER FUNCTIONS ---
 
@@ -21,6 +19,7 @@ const createNewVessel = (): Vessel => ({
     certificateNumber: '',
     issueDate: '',
     expiryDate: '',
+    vettingExpiryDate: '',
     executor: '',
     owner: '',
     notes: '',
@@ -56,11 +55,13 @@ const sanitizeVesselData = (data: Partial<Vessel>): Vessel => {
         certificateNumber: data.certificateNumber || '',
         issueDate: data.issueDate || '',
         expiryDate: data.expiryDate || '',
+        vettingExpiryDate: data.vettingExpiryDate || '',
         executor: data.executor || '',
         notes: data.notes || '',
         tanks: tanks,
     };
 };
+
 
 // --- CHILD COMPONENTS ---
 
@@ -81,7 +82,7 @@ const TankConfigurationEditorModal: React.FC<{
             ...prev,
             calibrationCurve: prev.calibrationCurve.map((point, i) => {
                 if (i === index) {
-                    const numValue = brToNumber(value);
+                    const numValue = parseFloat(value.replace(',', '.'));
                     return {
                         ...point,
                         [field]: isFinite(numValue) ? numValue : 0,
@@ -104,17 +105,17 @@ const TankConfigurationEditorModal: React.FC<{
                 const type = parts[0];
 
                 if (type === 'TANQUE') {
-                    const [, balsaId, tankId, tankName, maxHeight, maxVolume] = parts;
+                    const [, , tankId, tankName, maxHeight, maxVolume] = parts;
                     tankIdFromData = tankId;
                     updatedTankData.tankName = tankName;
-                    updatedTankData.maxCalibratedHeight = brToNumber(maxHeight) || 0;
-                    updatedTankData.maxVolume = brToNumber(maxVolume) || 0;
+                    updatedTankData.maxCalibratedHeight = parseInt(maxHeight, 10) || 0;
+                    updatedTankData.maxVolume = parseInt(maxVolume, 10) || 0;
                 } else if (type === 'CALIBRACAO') {
                     const [, tankId, trimStr, heightStr, volumeStr] = parts;
                     if (tankIdFromData === null || tankId === tankIdFromData) {
                         const trim = parseInt(trimStr.replace('+', ''), 10);
-                        const height = brToNumber(heightStr);
-                        const volume = brToNumber(volumeStr);
+                        const height = parseFloat(heightStr.replace(',', '.'));
+                        const volume = parseInt(volumeStr, 10);
                         if (!isNaN(trim) && !isNaN(height) && !isNaN(volume)) {
                             newCalibrationCurve.push({ trim, height, volume });
                         }
@@ -243,8 +244,6 @@ export const VesselScreen: React.FC<VesselScreenProps> = ({ vessel, onSave, onBa
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
     const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
     const [tankToDelete, setTankToDelete] = useState<VesselTank | null>(null);
-    const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-    const [expandedLogRow, setExpandedLogRow] = useState<number | null>(null);
 
     const [editingTankId, setEditingTankId] = useState<number | null>(null);
     const [history, setHistory] = useLocalStorage<MeasurementLog[]>(`qc_history_${vessel?.id || 'new'}`, []);
@@ -277,23 +276,11 @@ export const VesselScreen: React.FC<VesselScreenProps> = ({ vessel, onSave, onBa
         }
     };
 
-    const validateForm = (): boolean => {
-        const errors: Record<string, string> = {};
-        if (!vesselData.name.trim()) errors.name = 'O nome da embarcação é obrigatório.';
-        if (!vesselData.certificateNumber.trim()) errors.certificateNumber = 'O número do certificado é obrigatório.';
-        if (!vesselData.issueDate) errors.issueDate = 'A data de emissão é obrigatória.';
-        if (!vesselData.expiryDate) errors.expiryDate = 'A data de validade é obrigatória.';
-        if (vesselData.issueDate && vesselData.expiryDate && new Date(vesselData.issueDate) > new Date(vesselData.expiryDate)) {
-            errors.expiryDate = 'A data de validade deve ser posterior à data de emissão.';
-        }
-        setValidationErrors(errors);
-        return Object.keys(errors).length === 0;
-    };
-
     const handleSave = () => {
         if (saveStatus === 'saving' || !isDirty) return;
-        if (!validateForm()) {
-            alert("Por favor, corrija os erros no formulário antes de salvar.");
+
+        if (!vesselData.name.trim()) {
+            alert("O nome da embarcação é obrigatório.");
             return;
         }
         setIsSaveConfirmOpen(true);
@@ -317,15 +304,7 @@ export const VesselScreen: React.FC<VesselScreenProps> = ({ vessel, onSave, onBa
 
     const handleVesselDataChange = useCallback((field: keyof Vessel, value: any) => {
         setVesselData(prev => ({ ...prev, [field]: value }));
-        // Clear validation error for the field being changed
-        if (validationErrors[field]) {
-            setValidationErrors(prev => {
-                const newErrors = { ...prev };
-                delete newErrors[field];
-                return newErrors;
-            });
-        }
-    }, [validationErrors]);
+    }, []);
 
     const handleAddTank = () => {
         const newTank: VesselTank = {
@@ -360,12 +339,6 @@ export const VesselScreen: React.FC<VesselScreenProps> = ({ vessel, onSave, onBa
     const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = event.target.files;
         if (!files || files.length === 0) return;
-
-        if (files.length > 100) {
-            alert("Você pode analisar no máximo 100 arquivos de certificado de uma vez.");
-            if (fileInputRef.current) fileInputRef.current.value = "";
-            return;
-        }
 
         setIsLoadingAI(true);
         try {
@@ -468,141 +441,107 @@ export const VesselScreen: React.FC<VesselScreenProps> = ({ vessel, onSave, onBa
                  <div className="animate-fade-in">
                  <Card>
                     <h2 className="text-lg font-semibold mb-4">Histórico de Medições</h2>
-                    {history.length === 0 ? (
-                        <div className="text-center text-muted-foreground py-8">
-                            <p>Nenhum histórico de medição encontrado para esta embarcação.</p>
-                        </div>
-                    ) : (
-                        <div className="border rounded-lg">
-                            {/* Header for the list */}
-                            <div className="flex items-center p-3 bg-secondary/50 text-xs font-semibold text-muted-foreground border-b">
-                                <div className="w-1/4">Data/Hora</div>
-                                <div className="w-1/4">Operação</div>
-                                <div className="w-1/4">Produto</div>
-                                <div className="w-1/4 text-right">Volume Total (L)</div>
-                                <div className="w-12 flex-shrink-0"></div>
-                            </div>
-                            {history.map(log => (
-                                <React.Fragment key={log.id}>
-                                    <div 
-                                        className="flex items-center p-3 border-b last:border-0 hover:bg-secondary/30 cursor-pointer"
-                                        onClick={() => setExpandedLogRow(prev => prev === log.id ? null : log.id)}
-                                    >
-                                        <div className="w-1/4 font-mono text-sm">{new Date(log.dateTime).toLocaleString('pt-BR')}</div>
-                                        <div className="w-1/4 text-sm capitalize">{log.operationType.replace(/_/g, ' ')}</div>
-                                        <div className="w-1/4 text-sm capitalize">{log.product}</div>
-                                        <div className="w-1/4 text-sm font-mono text-right">{numberToBr(log.totalVolume, 0)}</div>
-                                        <div className="w-12 flex-shrink-0 text-center">
-                                            {expandedLogRow === log.id ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
-                                        </div>
-                                    </div>
-                                    {expandedLogRow === log.id && (
-                                        <div className="p-4 bg-secondary/20 border-b animate-fade-in" style={{animationDuration: '300ms'}}>
-                                            <h4 className="text-sm font-semibold mb-2">Detalhes da Medição</h4>
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-xs">
-                                                    <thead className="bg-secondary/50">
-                                                        <tr>
-                                                            <th className="p-2 text-left">Tanque</th>
-                                                            <th className="p-2 text-center">Trim</th>
-                                                            <th className="p-2 text-right">Altura (cm)</th>
-                                                            <th className="p-2 text-right">Volume Calculado (L)</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {log.measurements.map((m, index) => (
-                                                            <tr key={index} className="border-b last:border-0">
-                                                                <td className="p-2">{m.tankName}</td>
-                                                                <td className="p-2 text-center font-mono">{m.trim}</td>
-                                                                <td className="p-2 text-right font-mono">{numberToBr(m.height, 2)}</td>
-                                                                <td className="p-2 text-right font-mono font-semibold">{numberToBr(m.calculatedVolume, 0)}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-                                </React.Fragment>
-                            ))}
-                        </div>
-                    )}
-                 </Card>
-                </div>
-            )}
-            
-            {activeTab === TABS.CONFIG && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 animate-fade-in">
-                    <div className="md:col-span-1 space-y-6">
-                        <Card>
-                             <h3 className="text-lg font-semibold mb-4">Informações Gerais</h3>
-                             <div className="space-y-4">
-                                <Input label="Nome da Embarcação" value={vesselData.name} onChange={e => handleVesselDataChange('name', e.target.value)} error={validationErrors.name} />
-                                <Select label="Tipo de Equipamento" value={vesselData.type} onChange={e => handleVesselDataChange('type', e.target.value as EquipmentType)}>
-                                    <option value="balsa-tanque">Balsa-tanque</option>
-                                    <option value="balsa-granel">Balsa-granel</option>
-                                    <option value="navio-tanque">Navio-tanque</option>
-                                    <option value="navio-granel">Navio-granel</option>
-                                </Select>
-                                 <Input label="Proprietário" value={vesselData.owner || ''} onChange={e => handleVesselDataChange('owner', e.target.value)} />
-                                 <Input label="ID de Importação (Opcional)" value={vesselData.externalId || ''} onChange={e => handleVesselDataChange('externalId', e.target.value)} />
-                                <Textarea label="Observações" value={vesselData.notes || ''} onChange={e => handleVesselDataChange('notes', e.target.value)} />
-                             </div>
-                        </Card>
-                        <Card>
-                             <h3 className="text-lg font-semibold mb-4">Certificado de Arqueação</h3>
-                             <div className="space-y-4">
-                                <Input label="Nº do Certificado" value={vesselData.certificateNumber} onChange={e => handleVesselDataChange('certificateNumber', e.target.value)} error={validationErrors.certificateNumber} />
-                                <div className="grid grid-cols-2 gap-4">
-                                    <Input label="Data de Emissão" type="date" value={vesselData.issueDate} onChange={e => handleVesselDataChange('issueDate', e.target.value)} error={validationErrors.issueDate} />
-                                    <Input label="Data de Validade" type="date" value={vesselData.expiryDate} onChange={e => handleVesselDataChange('expiryDate', e.target.value)} error={validationErrors.expiryDate} />
-                                </div>
-                                <Input label="Executor" value={vesselData.executor} onChange={e => handleVesselDataChange('executor', e.target.value)} />
-                                 <div>
-                                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*,application/pdf" className="hidden" multiple />
-                                    <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="w-full" disabled={isLoadingAI}>
-                                        {isLoadingAI ? <Loader2Icon className="h-4 w-4 mr-2" /> : <Wand2Icon className="h-4 w-4 mr-2" />}
-                                        {isLoadingAI ? 'Analisando...' : 'Analisar Certificado com IA'}
-                                    </Button>
-                                     <p className="text-xs text-muted-foreground mt-2 text-center">Envie uma imagem ou PDF do certificado para preencher os dados automaticamente.</p>
-                                </div>
-                             </div>
-                        </Card>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="border-b">
+                                <tr className="text-left text-muted-foreground">
+                                    <th className="p-2">Data/Hora</th>
+                                    <th className="p-2">Operação</th>
+                                    <th className="p-2">Produto</th>
+                                    <th className="p-2 text-right">Volume Total (L)</th>
+                                    <th className="p-2">Operador</th>
+                                    <th className="p-2">Tanques Medidos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {history.length === 0 ? (
+                                    <tr><td colSpan={6} className="text-center p-8 text-muted-foreground">Nenhum registro encontrado.</td></tr>
+                                ) : history.map(log => (
+                                    <tr key={log.id} className="border-b last:border-b-0">
+                                        <td className="p-2">{new Date(log.dateTime).toLocaleString('pt-BR')}</td>
+                                        <td className="p-2">{log.operationType.replace('_', ' ')}</td>
+                                        <td className="p-2">{log.product}</td>
+                                        <td className="p-2 font-mono text-right">{log.totalVolume.toLocaleString('pt-BR', {maximumFractionDigits: 3})}</td>
+                                        <td className="p-2">{log.operator}</td>
+                                        <td className="p-2">{log.measurements.length}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                    <div className="md:col-span-2">
-                         <Card>
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-semibold">Configuração de Tanques</h3>
-                                <Button onClick={handleAddTank} icon={<PlusCircleIcon className="h-4 w-4"/>} size="sm">Adicionar Tanque</Button>
-                            </div>
-                            <div className="space-y-3">
-                                {vesselData.tanks.length === 0 ? (
-                                    <p className="text-center text-muted-foreground py-4">Nenhum tanque adicionado.</p>
-                                ) : (
-                                    vesselData.tanks.map(tank => (
-                                        <div key={tank.id} className="bg-secondary/50 p-3 rounded-lg flex justify-between items-center">
-                                            <div>
-                                                <p className="font-semibold">{tank.tankName}</p>
-                                                <p className="text-xs text-muted-foreground">{tank.calibrationCurve.length} pontos na curva de calibração.</p>
-                                            </div>
-                                            <div className="flex gap-1">
-                                                <Button variant="secondary" size="sm" onClick={() => setEditingTankId(tank.id)}>Configurar</Button>
-                                                <Button variant="ghost" size="sm" className="!p-2" onClick={() => handleRemoveTank(tank.id)}><Trash2Icon className="h-4 w-4 text-destructive"/></Button>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                         </Card>
-                    </div>
+                </Card>
                 </div>
             )}
 
+            {activeTab === TABS.CONFIG && (
+                 <div className="animate-fade-in space-y-6">
+                    <Card>
+                        <h3 className="text-lg font-semibold mb-4">Dados da Embarcação</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <Input label="Nome da Embarcação" placeholder="Ex: Balsa Rio I" value={vesselData.name} onChange={e => handleVesselDataChange('name', e.target.value)} containerClassName="md:col-span-2" />
+                            <Input label="ID de Importação" value={vesselData.externalId || 'N/A'} disabled />
+                            <Input label="Proprietário" value={vesselData.owner || ''} onChange={e => handleVesselDataChange('owner', e.target.value)} containerClassName="md:col-span-2"/>
+                            <Select label="Tipo" value={vesselData.type} onChange={e => handleVesselDataChange('type', e.target.value as EquipmentType)}>
+                                <option value="balsa-tanque">Balsa-Tanque</option>
+                                <option value="navio-tanque">Navio-Tanque</option>
+                                <option value="balsa-granel">Balsa-Granel</option>
+                                <option value="navio-granel">Navio-Granel</option>
+                            </Select>
+                            <Input label="Capacidade Total (L)" type="number" value={vesselData.totalTheoreticalCapacity || ''} onChange={e => handleVesselDataChange('totalTheoreticalCapacity', parseInt(e.target.value, 10) || 0)} containerClassName="md:col-span-3"/>
+                            <Textarea label="Observações" value={vesselData.notes || ''} onChange={e => handleVesselDataChange('notes', e.target.value)} containerClassName="md:col-span-3"/>
+                        </div>
+                    </Card>
+
+                    <Card>
+                        <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
+                             <h3 className="text-lg font-semibold">Certificado de Arqueação</h3>
+                             <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple accept="image/*,application/pdf" className="hidden"/>
+                             <Button 
+                                variant="secondary" 
+                                onClick={() => fileInputRef.current?.click()} 
+                                icon={isLoadingAI ? <Loader2Icon className="h-4 w-4"/> : <Wand2Icon className="h-4 w-4"/>} 
+                                disabled={isLoadingAI}
+                             >
+                                 {isLoadingAI ? 'Analisando Certificado...' : (isCreating ? 'Analisar Certificado (IA)' : 'Atualizar com Certificado (IA)')}
+                             </Button>
+                        </div>
+                         {isLoadingAI && <p className="text-sm text-muted-foreground mb-4">Analisando certificado... Isso pode levar um minuto.</p>}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input label="Nº Certificado INMETRO" value={vesselData.certificateNumber} onChange={e => handleVesselDataChange('certificateNumber', e.target.value)} />
+                            <Input label="Executor" value={vesselData.executor} onChange={e => handleVesselDataChange('executor', e.target.value)} />
+                            <Input label="Data de Emissão" type="date" value={vesselData.issueDate} onChange={e => handleVesselDataChange('issueDate', e.target.value)} />
+                            <Input label="Data de Validade" type="date" value={vesselData.expiryDate} onChange={e => handleVesselDataChange('expiryDate', e.target.value)} />
+                            <Input label="Validade do Vetting" type="date" value={vesselData.vettingExpiryDate || ''} onChange={e => handleVesselDataChange('vettingExpiryDate', e.target.value)} containerClassName="md:col-span-2"/>
+                        </div>
+                    </Card>
+
+                     <Card>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold">Tanques da Embarcação</h3>
+                            <Button onClick={handleAddTank} variant="secondary" size="sm" icon={<PlusCircleIcon className="h-4 w-4"/>}>Adicionar Tanque</Button>
+                        </div>
+                        <div className="space-y-2">
+                            {vesselData.tanks.length === 0 ? (
+                                <p className="text-muted-foreground text-center py-4">Nenhum tanque cadastrado.</p>
+                            ) : vesselData.tanks.map(tank => (
+                                <div key={tank.id} className="flex items-center justify-between p-2 rounded-md bg-secondary/50">
+                                    <span className="font-medium">{tank.tankName}</span>
+                                    <div className="flex gap-2">
+                                        <Button size="sm" variant="secondary" onClick={() => setEditingTankId(tank.id)}>Editar</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleRemoveTank(tank.id)}><Trash2Icon className="h-4 w-4 text-destructive"/></Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                 </div>
+            )}
+            
             {editingTank && (
                 <TankConfigurationEditorModal
                     tank={editingTank}
-                    onSave={handleUpdateTank}
                     onClose={() => setEditingTankId(null)}
+                    onSave={handleUpdateTank}
                 />
             )}
             
@@ -612,19 +551,24 @@ export const VesselScreen: React.FC<VesselScreenProps> = ({ vessel, onSave, onBa
                 onConfirm={confirmAndSave}
                 title="Confirmar Alterações"
                 variant="default"
-                confirmText="Sim, Salvar"
+                confirmText="Salvar"
             >
-                <p>Você está prestes a salvar as alterações na embarcação <strong className="text-foreground">{vesselData.name}</strong>. Deseja continuar?</p>
+                <p>Você está prestes a atualizar as informações da embarcação <strong className="text-foreground">{vesselData.name}</strong>.</p>
+                <p>Deseja continuar e salvar as modificações?</p>
             </ConfirmationModal>
 
-            <ConfirmationModal
-                isOpen={!!tankToDelete}
-                onClose={() => setTankToDelete(null)}
-                onConfirm={confirmRemoveTank}
-                title="Confirmar Exclusão de Tanque"
-            >
-                <p>Tem certeza que deseja remover o tanque <strong className="text-foreground">{tankToDelete?.tankName}</strong>? Todos os dados de calibração associados serão perdidos.</p>
-            </ConfirmationModal>
+            {tankToDelete && (
+                 <ConfirmationModal
+                    isOpen={!!tankToDelete}
+                    onClose={() => setTankToDelete(null)}
+                    onConfirm={confirmRemoveTank}
+                    title="Confirmar Remoção do Tanque"
+                >
+                    <p>Você tem certeza que deseja remover o tanque <strong className="text-foreground">{tankToDelete.tankName}</strong>?</p>
+                    <p>Esta ação não pode ser desfeita.</p>
+                </ConfirmationModal>
+            )}
+
         </div>
     );
 };

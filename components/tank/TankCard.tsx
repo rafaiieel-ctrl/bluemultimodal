@@ -1,5 +1,4 @@
 
-
 import React, { useCallback, useMemo, useState } from 'react';
 import { Tank, ModalType, ProductType } from '../../types';
 import { Card } from '../ui/Card';
@@ -7,7 +6,7 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import { LacreManager } from './LacreManager';
-import { Trash2Icon, CopyIcon, AlertTriangleIcon, ChevronDownIcon } from '../ui/icons';
+import { Trash2Icon, CopyIcon, AlertTriangleIcon } from '../ui/icons';
 import { numberToBr } from '../../utils/helpers';
 
 interface TankCardProps {
@@ -31,6 +30,13 @@ const ResultDisplay: React.FC<{ label: string; value: string; unit?: string; isW
         </p>
     </div>
 );
+
+const ChevronDownIcon: React.FC<{className?: string}> = ({className}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="m6 9 6 6 6-6"/>
+    </svg>
+);
+
 
 export const TankCard: React.FC<TankCardProps> = ({ tank, index, onUpdate, onDelete, onDuplicate, activeOperationType }) => {
     const [isDetailsVisible, setIsDetailsVisible] = useState(false);
@@ -99,15 +105,6 @@ export const TankCard: React.FC<TankCardProps> = ({ tank, index, onUpdate, onDel
 
     return (
         <Card className="relative group animate-fade-in" padding="md" style={{ animationDelay: `${index * 70}ms`, opacity: 0 }}>
-            <div className="absolute top-4 left-4">
-                <span className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full ${statusInfo.classes}`}>
-                    <span className={`h-2 w-2 rounded-full ${
-                        status === 'OK' ? 'bg-green-600' : status === 'FORA' ? 'bg-destructive' : 'bg-muted-foreground'
-                    }`}></span>
-                    <span>{statusInfo.text}</span>
-                </span>
-            </div>
-
             <span className="absolute top-4 right-6 font-bold text-4xl text-foreground/5 opacity-50 group-hover:opacity-100 transition-opacity duration-300">#{index + 1}</span>
             <div className="space-y-6">
                 {/* Seção de Identificação */}
@@ -125,8 +122,8 @@ export const TankCard: React.FC<TankCardProps> = ({ tank, index, onUpdate, onDel
                             <option value="hidratado">Hidratado</option>
                             <option value="granel">Granel</option>
                         </Select>
-                        <Input label={identLabel} name="ident" value={tank.ident} onChange={handleChange} containerClassName="sm:col-span-1" readOnly={isVesselOperation} placeholder="ABC-1234" />
-                        <Input label="Tanque/Comp." name="tanque" value={tank.tanque} onChange={handleChange} containerClassName="sm:col-span-1" readOnly={isVesselOperation} placeholder="TQ-01"/>
+                        <Input label={identLabel} name="ident" value={tank.ident} onChange={handleChange} containerClassName="sm:col-span-1" readOnly={isVesselOperation} />
+                        <Input label="Tanque/Comp." name="tanque" value={tank.tanque} onChange={handleChange} containerClassName="sm:col-span-1" readOnly={isVesselOperation}/>
                     </div>
                 </fieldset>
                 
@@ -143,9 +140,9 @@ export const TankCard: React.FC<TankCardProps> = ({ tank, index, onUpdate, onDel
                     </button>
                     {isDetailsVisible && (
                         <div id={`additional-details-${tank.id}`} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-border mt-2 animate-fade-in" style={{animationDuration: '300ms'}}>
-                            <Input label="Cliente" name="cliente" value={tank.cliente} onChange={handleChange} containerClassName="sm:col-span-2" placeholder="Nome do cliente" />
-                            <Input label="Terminal de Descarga" name="tdesc" value={tank.tdesc} onChange={handleChange} containerClassName="sm:col-span-1" placeholder="Ex: T01" />
-                            <Input label="Local de Descarga" name="ldesc" value={tank.ldesc} onChange={handleChange} containerClassName="sm:col-span-1" placeholder="Ex: Betim-MG" />
+                            <Input label="Cliente" name="cliente" value={tank.cliente} onChange={handleChange} containerClassName="sm:col-span-2" />
+                            <Input label="Terminal de Descarga" name="tdesc" value={tank.tdesc} onChange={handleChange} containerClassName="sm:col-span-1" />
+                            <Input label="Local de Descarga" name="ldesc" value={tank.ldesc} onChange={handleChange} containerClassName="sm:col-span-1" />
                         </div>
                     )}
                 </div>
@@ -201,18 +198,18 @@ export const TankCard: React.FC<TankCardProps> = ({ tank, index, onUpdate, onDel
                                         <>
                                             <Input label="ρ obs (kg/m³)" name="rho" value={tank.rho} onChange={handleChange} placeholder="e.g., 803,0" disabled={isEmpty} />
                                             <Input label="T amostra (°C)" name="Ta" value={tank.Ta} onChange={handleChange} placeholder="e.g., 25,0" disabled={isEmpty} />
-                                            <Input label="T tanque (°C)" name="Tt" value={tank.Tt} onChange={handleChange} placeholder="e.g., 27,0 (Opcional)" disabled={isEmpty} />
+                                            <Input label="T tanque (°C)" name="Tt" value={tank.Tt} onChange={handleChange} placeholder="Opcional" disabled={isEmpty} />
                                         </>
                                     )}
                                 </>
                             ) : (
                                 <>
-                                    <Input label="V.amb (L)" name="vamb" value={tank.vamb} onChange={handleChange} placeholder="e.g., 45000" disabled={isEmpty} />
+                                    <Input label="V.amb (L)" name="vamb" value={tank.vamb} onChange={handleChange} placeholder="e.g., 10000" disabled={isEmpty} />
                                     {isLiquidProduct && (
                                         <>
                                             <Input label="ρ obs (kg/m³)" name="rho" value={tank.rho} onChange={handleChange} placeholder="e.g., 803,0" disabled={isEmpty} />
                                             <Input label="T amostra (°C)" name="Ta" value={tank.Ta} onChange={handleChange} placeholder="e.g., 25,0" disabled={isEmpty} />
-                                            <Input label="T tanque (°C)" name="Tt" value={tank.Tt} onChange={handleChange} placeholder="e.g., 27,0 (Opcional)" disabled={isEmpty} />
+                                            <Input label="T tanque (°C)" name="Tt" value={tank.Tt} onChange={handleChange} placeholder="Opcional" disabled={isEmpty} />
                                         </>
                                     )}
                                 </>
@@ -227,6 +224,9 @@ export const TankCard: React.FC<TankCardProps> = ({ tank, index, onUpdate, onDel
                         <div>
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="text-sm font-semibold text-muted-foreground">Resultados Calculados</h3>
+                                <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full ${statusInfo.classes}`}>
+                                    Status ANP: {statusInfo.text}
+                                </span>
                             </div>
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                                 <ResultDisplay label="ρ@20" value={numberToBr(r20, 2)} unit="kg/m³" isWarning={isOutOfSpec('ρ@20')}/>

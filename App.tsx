@@ -1,37 +1,21 @@
-
 import React, { useState, useEffect, useCallback, useRef, SetStateAction, useMemo } from 'react';
-import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom';
-import { Tank, OperationDetails, Signatures, Theme, Vessel, VesselSchedule, ActiveOperationState, VesselScheduleLifecycleStatus, DischargeEvent, Location, SimpleAsset, FerroviarioSchedule, RodoviarioSchedule, DutoviarioSchedule, AereoSchedule, ScheduleStatus, StockTransaction, UnifiedSchedule, CostItem, Order, UnitCost, ScheduledTankInOp, VagaoStatus, AppNotification, NotificationSettings, MetaPlanejamento, AppSettings } from './types';
-import { calculateTankMetrics } from './services/calculationService';
+import { Tank, OperationDetails, Signatures, Theme, View, Vessel, VesselSchedule, VesselTank, ActiveOperationState, VesselScheduleLifecycleStatus, DischargeEvent, DischargeTankMeasurement, ProductType, ModalType, Incoterm, Location, SimpleAsset, TankWagon, CalibrationPoint, EquipmentType } from './types';
+import { calculateTankMetrics, ANP, interpolate } from './services/calculationService';
 import { analyzeOperationData } from './services/geminiService';
 import { Header } from './components/layout/Header';
-import { SplashScreen } from './components/splash/SplashScreen';
-import { nowLocal, brToNumber, exportToCsv, generateReportHtml, numberToBr, getCertificateStatus, generateMailtoLink, formatDateTime } from './utils/helpers';
+import { nowLocal, brToNumber, exportToCsv, generateReportHtml, numberToBr } from './utils/helpers';
 import { OperationScreen } from './screens/OperationScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { VesselScreen } from './screens/VesselScreen';
-import { RegistrationHubScreen } from './screens/RegistrationHubScreen';
-import { MultimodalPlanningScreen } from './screens/MultimodalPlanningScreen';
-import { RodoviarioPlanningScreen } from './screens/RodoviarioPlanningScreen';
-import { DutoviarioPlanningScreen } from './screens/DutoviarioPlanningScreen';
-import { AereoPlanningScreen } from './screens/AereoPlanningScreen';
-import { FerroviarioLoadingScreen } from './screens/FerroviarioLoadingScreen';
-import { ReportsScreen } from './screens/ReportsScreen';
-import { StockControlScreen } from './screens/StockControlScreen';
-import { CostControlScreen } from './screens/CostControlScreen';
-import { BackofficeScreen } from './screens/BackofficeScreen';
-import { SettingsScreen } from './screens/SettingsScreen';
-import { Toast } from './components/ui/Toast';
-import { ConfirmationModal } from './components/modals/ConfirmationModal';
-import { generateAereoSchedules, generateDutoviarioSchedules, generateFerroviarioSchedules, generateRodoviarioSchedules, generateVesselSchedules, generatePlanningGoals } from './utils/mockData';
-import { FluvialPlanningCenterScreen } from './screens/FluvialPlanningCenterScreen';
-import { FluvialProgrammingScreen } from './screens/FluvialProgrammingScreen';
-import { FerroviarioPlanningCenterScreen } from './screens/FerroviarioPlanningCenterScreen';
-import { FerroviarioProgrammingScreen } from './screens/FerroviarioProgrammingScreen';
-import { MenuIcon } from './components/ui/icons';
+import { Breadcrumb } from './components/ui/Breadcrumb';
 import { OperationsHubScreen } from './screens/OperationsHubScreen';
-import { BulkEditScreen } from './screens/BulkEditScreen';
+import { PlanningHubScreen } from './screens/PlanningHubScreen';
+import { RegistrationHubScreen } from './screens/RegistrationHubScreen';
+import { TankWagonScreen } from './screens/TankWagonScreen';
+import { TankWagonImportScreen } from './screens/TankWagonImportScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
+import { LoginScreen } from './screens/LoginScreen';
 
 const getInitialOperationDetails = (): OperationDetails => ({
     id: `OP-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(Date.now()).slice(-4)}`,
@@ -42,9 +26,7 @@ const getInitialOperationDetails = (): OperationDetails => ({
     terminal: 'Terminal Exemplo',
     local: 'Paranaguá - PR',
     dateTime: nowLocal(),
-    operationStartDate: '',
     status: 'em_andamento',
-    observations: '',
 });
 
 const getInitialSignatures = (): Signatures => ({
@@ -55,237 +37,858 @@ const getInitialSignatures = (): Signatures => ({
 
 const getInitialActiveOperation = (): ActiveOperationState => ({
     details: getInitialOperationDetails(),
-    tanks: [],
+    tanks: [], // Will be populated by useEffect
     signatures: getInitialSignatures(),
 });
 
-const App: React.FC = () => {
-    const [isAppLoading, setIsAppLoading] = useState(true);
-    const [isDataReady, setIsDataReady] = useState(false);
-    const [loadingMessage, setLoadingMessage] = useState('Inicializando aplicação...');
-    
-    const navigate = useNavigate();
-    const location = useLocation();
+const LOCAL_STORAGE_KEYS = [
+    'qc_active_operation', 'qc_archived_operations', 'qc_vessels', 'qc_tank_wagons', 
+    'qc_vessel_schedule', 'qc_locations', 'qc_simple_assets', 'qc_active_schedule_id',
+    'qc_nav_order', 'qc_dashboard_order', 'qc_theme'
+];
 
-    const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('qc_theme') as Theme | null) || 'system');
+
+const App: React.FC = () => {
+    const [theme, setTheme] = useState<Theme>(() => {
+        const savedTheme = localStorage.getItem('qc_theme') as Theme | null;
+        return savedTheme || 'system';
+    });
+    const [activeView, setActiveView] = useState<View>('login');
     
-    const [activeOperation, setActiveOperation] = useLocalStorage<ActiveOperationState>('qc_active_operation', getInitialActiveOperation);
+    // --- State Refactor for Auto-Save ---
+    const [activeOperation, setActiveOperation] = useLocalStorage<ActiveOperationState>('qc_active_operation', getInitialActiveOperation());
     const [archivedOperations, setArchivedOperations] = useLocalStorage<ActiveOperationState[]>('qc_archived_operations', []);
     const { details: operationDetails, tanks, signatures } = activeOperation;
 
-    const setOperationDetails = useCallback((newDetails: OperationDetails) => setActiveOperation(prev => ({ ...prev, details: newDetails })), [setActiveOperation]);
+    const setOperationDetails = useCallback((newDetails: OperationDetails) => {
+        setActiveOperation(prev => ({ ...prev, details: newDetails }));
+    }, [setActiveOperation]);
+    
     const setTanks = useCallback((updater: SetStateAction<Tank[]>) => {
         setActiveOperation(prev => {
-            const newTanks = typeof updater === 'function' ? updater(prev.tanks) : updater;
+            let newTanks: Tank[];
+            if (typeof updater === 'function') {
+                newTanks = updater(prev.tanks);
+            } else {
+                newTanks = updater;
+            }
             return { ...prev, tanks: newTanks };
         });
     }, [setActiveOperation]);
+
     const setSignatures = useCallback((updater: SetStateAction<Signatures>) => {
         setActiveOperation(prev => {
-            const finalSignatures = typeof updater === 'function' ? updater(prev.signatures) : updater;
+            let finalSignatures: Signatures;
+            if (typeof updater === 'function') {
+                finalSignatures = updater(prev.signatures);
+            } else {
+                finalSignatures = updater;
+            }
             return { ...prev, signatures: finalSignatures };
         });
     }, [setActiveOperation]);
+    // --- End State Refactor ---
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisResult, setAnalysisResult] = useState('');
     const [vessels, setVessels] = useLocalStorage<Vessel[]>('qc_vessels', []);
-    const [schedule, setSchedule] = useLocalStorage<VesselSchedule[]>('qc_vessel_schedule', () => generateVesselSchedules(15));
-    
-    const [ferroviarioSchedules, setFerroviarioSchedules] = useLocalStorage<FerroviarioSchedule[]>('qc_ferroviario_schedules', () => generateFerroviarioSchedules(10));
-    const [rodoviarioSchedules, setRodoviarioSchedules] = useLocalStorage<RodoviarioSchedule[]>('qc_rodoviario_schedules', () => generateRodoviarioSchedules(20));
-    const [dutoviarioSchedules, setDutoviarioSchedules] = useLocalStorage<DutoviarioSchedule[]>('qc_dutoviario_schedules', () => generateDutoviarioSchedules(5));
-    const [aereoSchedules, setAereoSchedules] = useLocalStorage<AereoSchedule[]>('qc_aereo_schedules', () => generateAereoSchedules(8));
-    const [stockTransactions, setStockTransactions] = useLocalStorage<StockTransaction[]>('qc_stock_transactions', []);
-    const [costItems, setCostItems] = useLocalStorage<CostItem[]>('qc_cost_items', []);
-    const [unitCosts, setUnitCosts] = useLocalStorage<UnitCost[]>('qc_unit_costs', []);
+    const [tankWagons, setTankWagons] = useLocalStorage<TankWagon[]>('qc_tank_wagons', []);
+    const [schedule, setSchedule] = useLocalStorage<VesselSchedule[]>('qc_vessel_schedule', []);
     const [locations, setLocations] = useLocalStorage<Location[]>('qc_locations', []);
     const [simpleAssets, setSimpleAssets] = useLocalStorage<SimpleAsset[]>('qc_simple_assets', []);
-    const [orders, setOrders] = useLocalStorage<Order[]>('qc_orders', []);
-    // FIX: Changed eager initialization to lazy by passing the function reference instead of calling it. This resolves the error.
-    const [planningGoals, setPlanningGoals] = useLocalStorage<MetaPlanejamento[]>('qc_planning_goals', generatePlanningGoals);
+    const [selectedVesselId, setSelectedVesselId] = useState<number | 'new' | null>(null);
+    const [selectedTankWagonId, setSelectedTankWagonId] = useState<number | 'new' | null>(null);
+    const [activeScheduleId, setActiveScheduleId] = useLocalStorage<number | null>('qc_active_schedule_id', null);
+    const [activeOperationType, setActiveOperationType] = useState<'loading' | 'unloading' | null>(null);
     
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [activeScheduleForOperation, setActiveScheduleForOperation] = useLocalStorage<VesselSchedule | null>('qc_active_schedule', null);
-    const [activeOperationType, setActiveOperationType] = useLocalStorage<'loading' | 'unloading' | null>('qc_active_op_type', null);
-
-    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; action?: { label: string; onClick: () => void } } | null>(null);
-
-    const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
-    const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
-    const restoreDataRef = useRef<Record<string, string> | null>(null);
+    const [navOrder, setNavOrder] = useLocalStorage<View[]>('qc_nav_order', ['planningHub', 'operationsHub', 'registrationHub', 'dashboard']);
+    const [dashboardOrder, setDashboardOrder] = useLocalStorage<string[]>('qc_dashboard_order', ['certificates', 'schedule', 'loss', 'transit']);
     
-    const [appSettings, setAppSettings] = useLocalStorage<AppSettings>('qc_app_settings', {
-        notifications: { email: 'user@bluemultimodal.com', notifyOnOperationConcluded: true, notifyOnVesselDelayed: true, notifyOnCertificateExpires: true },
-        units: { volume: 'L', mass: 'Kg' }
-    });
-    const [notifications, setNotifications] = useLocalStorage<AppNotification[]>('qc_notifications', []);
-
-    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success', action?: { label: string; onClick: () => void }) => {
-        setToast({ message, type, action });
-    }, []);
-
-    const addNotification = useCallback((type: 'info' | 'warning' | 'error', title: string, message: string) => {
-        setNotifications(prev => {
-            if (prev.some(n => !n.isRead && n.title === title && n.message === message)) return prev;
-            return [{ id: Date.now(), timestamp: new Date().toISOString(), isRead: false, type, title, message }, ...prev].slice(0, 50);
-        });
-    }, [setNotifications]);
-
-    const triggerNotification = useCallback((eventType: keyof Omit<NotificationSettings, 'email'>, payload: { type: 'info' | 'warning' | 'error', title: string, message: string }, email?: { subject: string, body: string }) => {
-        if (appSettings.notifications[eventType]) {
-            addNotification(payload.type, payload.title, payload.message);
-            if (email && appSettings.notifications.email) {
-                showToast(payload.title, payload.type === 'error' ? 'error' : 'success', {
-                    label: 'Enviar E-mail',
-                    onClick: () => { window.location.href = generateMailtoLink(appSettings.notifications.email, email.subject, email.body); }
-                });
-            }
-        }
-    }, [addNotification, appSettings.notifications, showToast]);
-
-    useEffect(() => {
-        const initializeApp = async () => {
-            if (localStorage.getItem('qc_data_initialized')) {
-                setLoadingMessage('Carregando dados...');
-                await new Promise(resolve => setTimeout(resolve, 1200));
-            } else {
-                setLoadingMessage('Preparando para o primeiro uso...');
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                localStorage.setItem('qc_data_initialized', 'true');
-            }
-            setIsDataReady(true); setLoadingMessage('Pronto para iniciar!');
-        };
-        initializeApp();
-    }, []);
+    const prevVesselIdRef = useRef<number | null>(null);
+    const prevScheduleIdRef = useRef<number | null>(null);
 
     useEffect(() => {
         const root = window.document.documentElement;
-        const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        const isDark =
+            theme === 'dark' ||
+            (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         root.classList.toggle('dark', isDark);
         localStorage.setItem('qc_theme', theme);
     }, [theme]);
 
-    // FIX: Added missing required properties to the new tank object to match the Tank type definition.
-    const addTank = useCallback((template?: Partial<Tank>) => {
-        setTanks(prev => [...prev, { id: Date.now(), tipo: 'rodoviario', prod: 'anidro', ident: '', tanque: '', cliente: '', tdesc: '', ldesc: '', vamb: '', rho: '', Ta: '', Tt: '', lacres: [], results: { r20: NaN, fcv: NaN, inpm: NaN, v20: NaN, status: 'PENDING', messages: [] }, ...template }]);
-    }, [setTanks]);
-    const updateTank = useCallback((id: number, updatedTank: Tank) => setTanks(prev => prev.map(t => t.id === id ? calculateTankMetrics(updatedTank) : t)), [setTanks]);
-    const deleteTank = useCallback((id: number) => setTanks(prev => prev.filter(t => t.id !== id)), [setTanks]);
-    const duplicateTank = useCallback((id: number) => { tanks.find(t => t.id === id) && addTank(tanks.find(t => t.id === id)); }, [tanks, addTank]);
-    const calculateAllTanks = useCallback(() => setTanks(prev => prev.map(calculateTankMetrics)), [setTanks]);
+    const createManualTank = useCallback((): Tank => ({
+        id: Date.now(),
+        tipo: 'rodoviario',
+        prod: 'anidro',
+        ident: '',
+        tanque: '',
+        cliente: '',
+        tdesc: '',
+        ldesc: '',
+        vamb: '',
+        rho: '',
+        Ta: '',
+        Tt: '',
+        lacres: [],
+        isEmpty: false,
+        results: { r20: NaN, fcv: NaN, inpm: NaN, v20: NaN, status: 'PENDING', messages: [] }
+    }), []);
 
-    const handleAIAnalysis = useCallback(async (prompt: string) => {
-        setIsAnalyzing(true); setAnalysisResult('');
-        try { setAnalysisResult(await analyzeOperationData(operationDetails, tanks, prompt, vessels)); } 
-        catch (e) { setAnalysisResult(`Erro: ${(e as Error).message}`); } 
-        finally { setIsAnalyzing(false); }
-    }, [operationDetails, tanks, vessels]);
+    const activeSchedule = useMemo(() => {
+        return schedule.find(s => s.id === activeScheduleId) || null;
+    }, [activeScheduleId, schedule]);
 
-    const newOperation = useCallback((silent = false) => {
-        const doReset = () => { setActiveOperation(getInitialActiveOperation()); setActiveScheduleForOperation(null); setActiveOperationType(null); };
-        if (silent || window.confirm("Isso limpará a operação atual. Deseja continuar?")) doReset();
-    }, [setActiveOperation, setActiveScheduleForOperation, setActiveOperationType]);
+    useEffect(() => {
+        if (activeView !== 'operation') return;
 
-    const concludeOperation = useCallback(() => { /* ... implementation ... */ }, [activeOperation, activeScheduleForOperation, activeOperationType, setSchedule, setArchivedOperations, setActiveOperation, showToast, setActiveScheduleForOperation, setActiveOperationType, triggerNotification]);
-    
-    const handleSaveVessel = (vesselToSave: Vessel) => {
-        setVessels(prev => prev.some(v => v.id === vesselToSave.id) ? prev.map(v => v.id === vesselToSave.id ? vesselToSave : v) : [...prev, vesselToSave]);
-        navigate('/registration-hub'); showToast('Embarcação salva com sucesso!');
-    };
-    const handleDeleteVessel = (id: number) => setVessels(prev => prev.filter(v => v.id !== id));
+        const vesselIdChanged = prevVesselIdRef.current !== operationDetails.vesselId;
+        const scheduleIdChanged = prevScheduleIdRef.current !== activeScheduleId;
 
-    const handleStartLoading = useCallback((scheduleId: number) => { /* ... implementation identical to original src/App.tsx ... */ navigate('/operation'); }, [schedule, vessels, newOperation, setActiveOperation, setActiveScheduleForOperation, setActiveOperationType, setSchedule, showToast, navigate]);
-    const handleRegisterArrival = useCallback((scheduleId: number) => { /* ... implementation ... */ }, [setSchedule, showToast]);
-    const handleStartDischarge = useCallback((scheduleId: number) => { /* ... implementation identical to original src/App.tsx ... */ navigate('/operation'); }, [schedule, vessels, newOperation, setActiveOperation, setActiveScheduleForOperation, setActiveOperationType, setSchedule, showToast, navigate]);
-    const handleFinalizeTrip = useCallback((scheduleId: number) => { /* ... implementation ... */ }, [schedule, setSchedule, showToast]);
-    
-    const handleStartFerroviarioLoading = useCallback((scheduleId: number) => {
-        const scheduleToStart = ferroviarioSchedules.find(s => s.id === scheduleId);
-        if(!scheduleToStart) return showToast('Programação não encontrada.', 'error');
-        if (scheduleToStart.vagoes.length === 0) {
-            const newVagoes = scheduleToStart.rateios.flatMap(rateio => Array.from({ length: brToNumber(rateio.qtd_vagoes) || 0 }).map(() => ({ id: Date.now() + Math.random(), numero: '', status: 'AGUARDANDO' as VagaoStatus, rateioId: rateio.id })));
-            setFerroviarioSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, vagoes: newVagoes, status: 'EM CARREGAMENTO' } : s));
-        } else {
-             setFerroviarioSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, status: 'EM CARREGAMENTO' } : s));
+        if (!vesselIdChanged && !scheduleIdChanged && tanks.length > 0) {
+            return;
         }
-        navigate(`/planning/rail/loading/${scheduleId}`);
-    }, [ferroviarioSchedules, setFerroviarioSchedules, showToast, navigate]);
 
-    const unifiedSchedules = useMemo((): UnifiedSchedule[] => {
-        const fluvial: UnifiedSchedule[] = schedule.map(s => ({
-            uid: `fluvial-${s.id}`, modal: 'fluvial', vesselType: s.vesselType, title: s.vesselName,
-            description: `${s.port} → ${s.rateios.map(r => r.localDescarga).join(', ')}`, status: s.status, originalId: s.id,
-            onStartLoading: handleStartLoading, onRegisterArrival: handleRegisterArrival, onStartDischarge: handleStartDischarge, onFinalizeTrip: handleFinalizeTrip,
-            onView: (id: number) => {
-                 if (s.status === 'EM CARREGAMENTO') handleStartLoading(id);
-                 if (s.status === 'EM DESCARGA') handleStartDischarge(id);
-            },
-        }));
-        const ferroviario: UnifiedSchedule[] = ferroviarioSchedules.map(s => ({
-            uid: `ferroviario-${s.id}`, modal: 'ferroviario', title: `Composição ${s.composicao}`, description: `${s.origem} → ${s.destino}`,
-            status: s.status, originalId: s.id, onStartLoading: handleStartFerroviarioLoading, onView: handleStartFerroviarioLoading,
-        }));
-        const rodoviario: UnifiedSchedule[] = rodoviarioSchedules.map(s => ({
-            uid: `rodoviario-${s.id}`, modal: 'rodoviario', title: s.placa, description: `${s.origem} → ${s.destino}`, status: s.status, originalId: s.id,
-        }));
-        const dutoviario: UnifiedSchedule[] = dutoviarioSchedules.map(s => ({
-            uid: `dutoviario-${s.id}`, modal: 'dutoviario', title: `Duto para ${s.base_destino}`, description: `${s.usina_origem} → ${s.cliente_final}`, status: s.status, originalId: s.id,
-        }));
-        const aereo: UnifiedSchedule[] = aereoSchedules.map(s => ({
-            uid: `aereo-${s.id}`, modal: 'aereo', title: `Voo ${s.voo}`, description: `${s.aeroporto_origem} → ${s.aeroporto_destino}`, status: s.status, originalId: s.id,
-        }));
-        return [...fluvial, ...ferroviario, ...rodoviario, ...dutoviario, ...aereo];
-    }, [schedule, ferroviarioSchedules, rodoviarioSchedules, dutoviarioSchedules, aereoSchedules, handleStartLoading, handleRegisterArrival, handleStartDischarge, handleFinalizeTrip, handleStartFerroviarioLoading]);
+        prevVesselIdRef.current = operationDetails.vesselId;
+        prevScheduleIdRef.current = activeScheduleId;
 
-    const onStartSplash = () => { setIsAppLoading(false); if (location.pathname === '/') navigate('/dashboard'); };
-    const handleLock = () => { setIsAppLoading(true); navigate('/'); };
+        const selectedVessel = operationDetails.vesselId
+            ? vessels.find(v => v.id === operationDetails.vesselId)
+            : null;
+        
+        const productForTanks = activeSchedule?.product || 'anidro';
 
-    if (isAppLoading) return <SplashScreen onStart={onStartSplash} isDataReady={isDataReady} loadingMessage={loadingMessage} />;
+        if (selectedVessel) {
+            const newTanks = selectedVessel.tanks.map((vesselTank): Tank => ({
+                id: Date.now() + Math.random(),
+                vesselTankId: vesselTank.id,
+                tipo: 'fluvial',
+                prod: productForTanks,
+                ident: selectedVessel.name,
+                tanque: vesselTank.tankName,
+                cliente: activeSchedule?.client || '',
+                tdesc: '',
+                ldesc: '',
+                vamb: '0',
+                rho: '',
+                Ta: '',
+                Tt: '',
+                trim: 0,
+                alturaMedidaCm: '',
+                lastroMm: '',
+                dischargedVolume: '0',
+                lacres: [],
+                isEmpty: false,
+                results: { r20: NaN, fcv: NaN, inpm: NaN, v20: NaN, status: 'PENDING', messages: [] }
+            }));
+            setTanks(newTanks);
+        } else if (!activeScheduleId) {
+            setTanks(prevTanks => {
+                const isCurrentlyVesselMode = prevTanks.some(t => t.vesselTankId);
+                if (prevTanks.length === 0 || isCurrentlyVesselMode || scheduleIdChanged) {
+                    return [createManualTank()];
+                }
+                return prevTanks;
+            });
+        }
+    }, [activeView, operationDetails.vesselId, vessels, createManualTank, setTanks, activeScheduleId, activeSchedule, tanks.length]);
+
+    
+    const handleNew = useCallback(() => {
+        setActiveOperation(getInitialActiveOperation());
+        setAnalysisResult('');
+        setActiveScheduleId(null);
+        setActiveOperationType(null);
+    }, [setActiveOperation, setActiveScheduleId]);
+    
+    const handleEnterDashboard = () => {
+        setActiveView('planningHub');
+    };
+
+    const handleLogout = () => {
+        setActiveView('login');
+    };
+    
+    const handleHome = () => {
+        setActiveView('planningHub');
+        setActiveOperation(getInitialActiveOperation());
+        setAnalysisResult('');
+        setActiveScheduleId(null);
+        setActiveOperationType(null);
+    };
+
+    const handleStartOperationFromSchedule = useCallback((scheduleId: number) => {
+        const scheduleToStart = schedule.find(s => s.id === scheduleId);
+        const vesselForSchedule = vessels.find(v => v.name === scheduleToStart?.vesselName);
+
+        if (scheduleToStart) {
+            setSchedule(prev => prev.map(s => s.id === scheduleId ? { ...s, status: 'EM CARREGAMENTO' } : s));
+            setActiveScheduleId(scheduleId);
+            setActiveOperationType('loading');
+            
+            const newDetails: OperationDetails = {
+                id: `OP-CARGA-${scheduleToStart.id}`,
+                type: 'transferencia',
+                modal: 'fluvial',
+                vesselId: vesselForSchedule?.id || null,
+                responsavel: operationDetails.responsavel,
+                terminal: scheduleToStart.port,
+                local: scheduleToStart.client,
+                dateTime: nowLocal(),
+                status: 'em_andamento',
+            };
+            
+            setActiveOperation({
+                details: newDetails,
+                tanks: [],
+                signatures: getInitialSignatures(),
+            });
+            setActiveView('operation');
+        }
+    }, [schedule, vessels, operationDetails.responsavel, setActiveOperation, setActiveScheduleId, setSchedule]);
+
+    const handleArrivalRegistration = useCallback((scheduleId: number) => {
+        setSchedule(prev => prev.map(s => 
+            s.id === scheduleId 
+                ? { ...s, status: 'AGUARDANDO DESCARGA', ata: s.ata || nowLocal() } 
+                : s
+        ));
+    }, [setSchedule]);
+
+    const handleStartDischargeOperation = useCallback((scheduleId: number) => {
+        const scheduleToStart = schedule.find(s => s.id === scheduleId);
+        const vesselForSchedule = vessels.find(v => v.name === scheduleToStart?.vesselName);
+
+        if (scheduleToStart) {
+            setSchedule(prev => prev.map(s => s.id === scheduleId ? { ...s, status: 'EM DESCARGA' } : s));
+            setActiveScheduleId(scheduleId);
+            setActiveOperationType('unloading');
+            
+            const newDetails: OperationDetails = {
+                id: `OP-DESCARGA-${scheduleToStart.id}-${(scheduleToStart.discharges?.length || 0) + 1}`,
+                type: 'transferencia',
+                modal: 'fluvial',
+                vesselId: vesselForSchedule?.id || null,
+                responsavel: operationDetails.responsavel,
+                terminal: scheduleToStart.port,
+                local: scheduleToStart.client,
+                dateTime: nowLocal(),
+                status: 'em_andamento',
+            };
+            
+            setActiveOperation({
+                details: newDetails,
+                tanks: [], // Reset tanks for discharge measurement
+                signatures: getInitialSignatures(),
+            });
+            setActiveView('operation');
+        }
+    }, [schedule, vessels, operationDetails.responsavel, setActiveOperation, setActiveScheduleId, setSchedule]);
+
+    const handleFinalizeTrip = useCallback((scheduleId: number) => {
+        setSchedule(prev => prev.map(s => {
+            if (s.id !== scheduleId) return s;
+
+            const totalLoaded = brToNumber(s.loadedVolume || '0');
+            const totalDischarged = s.discharges?.reduce((sum, d) => sum + d.totalDischargedVolume, 0) || 0;
+            const finalLossGain = totalDischarged - totalLoaded;
+
+            return { ...s, status: 'CONCLUÍDO', finalLossGain };
+        }));
+    }, [setSchedule]);
+
+
+    const handleViewOperation = useCallback((scheduleId: number) => {
+        const scheduleToView = schedule.find(s => s.id === scheduleId);
+        if (!scheduleToView) return;
+        
+        setActiveScheduleId(scheduleId);
+        if(scheduleToView.status === 'EM CARREGAMENTO') {
+            setActiveOperationType('loading');
+        } else if (scheduleToView.status === 'EM DESCARGA') {
+            setActiveOperationType('unloading');
+        }
+        setActiveView('operation');
+    }, [schedule, setActiveScheduleId, setActiveView]);
+    
+    const handleNewManualOperation = useCallback(() => {
+        handleNew();
+        setActiveView('operation');
+    }, [handleNew, setActiveView]);
+
+    
+    const updateActiveSchedule = useCallback((updatedSchedule: VesselSchedule) => {
+        if (!activeScheduleId) return;
+        setSchedule(prev => prev.map(s => s.id === activeScheduleId ? updatedSchedule : s));
+    }, [activeScheduleId, setSchedule]);
+
+
+    const addTank = useCallback(() => {
+        if (operationDetails.vesselId) return;
+        setTanks(prev => [...prev, createManualTank()]);
+    }, [operationDetails.vesselId, createManualTank, setTanks]);
+    
+    const updateTank = useCallback((id: number, updatedTank: Tank) => {
+        let tankWithCalculatedVamb = { ...updatedTank };
+
+        if (updatedTank.vesselTankId && updatedTank.trim !== undefined && !updatedTank.isEmpty) {
+            const vessel = vessels.find(v => v.id === operationDetails.vesselId);
+            const vesselTank = vessel?.tanks.find(t => t.id === updatedTank.vesselTankId);
+
+            if (vesselTank) {
+                const pointsForTrim = vesselTank.calibrationCurve
+                    .filter(p => p.trim === updatedTank.trim)
+                    .map(p => ({ height: p.height, volume: p.volume }));
+
+                const totalHeightNum = brToNumber(updatedTank.alturaMedidaCm || '');
+                const lastroHeightCm = brToNumber(updatedTank.lastroMm || '') / 10;
+
+                const totalVolume = interpolate(totalHeightNum, pointsForTrim);
+                const lastroVolume = interpolate(lastroHeightCm, pointsForTrim);
+
+                const netVolume = (isFinite(totalVolume) ? totalVolume : 0) - (isFinite(lastroVolume) ? lastroVolume : 0);
+                
+                tankWithCalculatedVamb.vamb = isFinite(netVolume) && netVolume > 0 ? numberToBr(netVolume, 1) : '0';
+            }
+        }
+        
+        const reCalculatedTank = calculateTankMetrics(tankWithCalculatedVamb);
+        setTanks(prev => prev.map(t => t.id === id ? reCalculatedTank : t));
+    }, [vessels, operationDetails.vesselId, setTanks]);
+
+    const deleteTank = useCallback((id: number) => {
+        setTanks(prev => prev.filter(t => t.id !== id));
+    }, [setTanks]);
+    
+    const duplicateTank = useCallback((id: number) => {
+        if (operationDetails.vesselId) return;
+        const tankToDuplicate = tanks.find(t => t.id === id);
+        if (tankToDuplicate) {
+            const newTank = { ...tankToDuplicate, id: Date.now() };
+            setTanks(prev => [...prev, newTank]);
+        }
+    }, [tanks, operationDetails.vesselId, setTanks]);
+
+    const calculateAll = useCallback(() => {
+        setTanks(prev => prev.map(calculateTankMetrics));
+    }, [setTanks]);
+
+    const handleAIAnalysis = async (prompt: string) => {
+        setIsAnalyzing(true);
+        setAnalysisResult('');
+        try {
+            const result = await analyzeOperationData(operationDetails, tanks, prompt, vessels);
+            setAnalysisResult(result);
+        } catch (error) {
+            console.error("AI Analysis Error:", error);
+            setAnalysisResult("Ocorreu um erro ao analisar os dados. Verifique o console para mais detalhes.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+    
+    const saveProject = () => {
+        const projectData = { ...activeOperation };
+        const json = JSON.stringify(projectData, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${operationDetails.id || 'projeto'}_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const loadProject = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target?.result as string);
+                    if (data.details && data.tanks && data.signatures) {
+                        setActiveOperation({
+                            details: data.details,
+                            tanks: data.tanks.map((t: Tank) => calculateTankMetrics(t)),
+                            signatures: data.signatures
+                        });
+                        setActiveView('operation');
+                        setActiveScheduleId(null);
+                        setActiveOperationType(null);
+                    } else {
+                        alert("Arquivo de projeto inválido.");
+                    }
+                } catch (error) {
+                    alert("Erro ao ler o arquivo de projeto.");
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+
+    const generateReport = () => {
+        const reportHtml = generateReportHtml(operationDetails, tanks, signatures, vessels);
+        const reportWindow = window.open('', '_blank');
+        reportWindow?.document.write(reportHtml);
+        reportWindow?.document.close();
+    };
+
+    const handleGenerateReportFromSchedule = useCallback((scheduleId: number) => {
+        const loadingOpId = `OP-CARGA-${scheduleId}`;
+        let operationToReport: ActiveOperationState | undefined;
+
+        if (activeOperation.details.id === loadingOpId) {
+            operationToReport = activeOperation;
+        } else {
+            operationToReport = archivedOperations.find(op => op.details.id === loadingOpId);
+        }
+        
+        if (operationToReport) {
+            const { details, tanks, signatures } = operationToReport;
+            const reportHtml = generateReportHtml(details, tanks, signatures, vessels);
+            const reportWindow = window.open('', '_blank');
+            reportWindow?.document.write(reportHtml);
+            reportWindow?.document.close();
+        } else {
+            alert(`Operação de carregamento para a programação ${scheduleId} não encontrada.`);
+        }
+    }, [activeOperation, archivedOperations, vessels]);
+
+    const handleConcludeOperation = () => {
+        const concludedOperation: ActiveOperationState = {
+            ...activeOperation,
+            details: { ...activeOperation.details, status: 'concluida' }
+        };
+        setArchivedOperations(prev => [concludedOperation, ...prev]);
+
+        if (activeScheduleId && activeSchedule) {
+            if (activeOperationType === 'loading') {
+                const totalLoadedVolume = tanks.reduce((sum, t) => sum + (isFinite(t.results.v20) ? t.results.v20 : 0), 0);
+                setSchedule(prev => prev.map(s => 
+                    s.id === activeScheduleId 
+                        ? { ...s, status: 'EM TRÂNSITO', loadedVolume: String(Math.round(totalLoadedVolume)) } 
+                        : s
+                ));
+            } else if (activeOperationType === 'unloading') {
+                const totalDischargedVolume = tanks.reduce((sum, t) => sum + brToNumber(t.dischargedVolume || '0'), 0);
+                const dischargeMeasurements: DischargeTankMeasurement[] = tanks
+                    .filter(t => brToNumber(t.dischargedVolume || '0') > 0)
+                    .map(t => ({
+                        vesselTankId: t.vesselTankId!,
+                        tankName: t.tanque,
+                        dischargedVolume: brToNumber(t.dischargedVolume || '0'),
+                    }));
+                
+                const newDischargeEvent: DischargeEvent = {
+                    id: operationDetails.id,
+                    dateTime: operationDetails.dateTime,
+                    totalDischargedVolume: totalDischargedVolume,
+                    measurements: dischargeMeasurements
+                };
+
+                setSchedule(prev => prev.map(s => 
+                    s.id === activeScheduleId 
+                        ? { ...s, status: 'AGUARDANDO DESCARGA', discharges: [...(s.discharges || []), newDischargeEvent] } 
+                        : s
+                ));
+            }
+        }
+
+        handleNew();
+        setActiveView('operationsHub');
+    };
+    
+    const handleBackToRegistrationHub = () => {
+        setActiveView('registrationHub');
+        setSelectedVesselId(null);
+        setSelectedTankWagonId(null);
+    };
+
+    const handleEditVessel = (vesselId: number | 'new') => {
+        setSelectedVesselId(vesselId);
+        setActiveView('vesselDetail');
+    };
+
+    const handleDeleteVessel = (vesselId: number) => {
+        setVessels(prev => prev.filter(v => v.id !== vesselId));
+    };
+
+    const handleSaveVessel = (vesselToSave: Vessel) => {
+        const vesselExists = vessels.some(v => v.id === vesselToSave.id);
+        if (vesselExists) {
+            setVessels(prev => prev.map(v => (v.id === vesselToSave.id ? vesselToSave : v)));
+        } else {
+            setVessels(prev => [...prev, vesselToSave]);
+        }
+        handleBackToRegistrationHub();
+    };
+    
+     const handleVesselTxtImport = (file: File) => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target?.result as string;
+            if (!content) {
+                alert("Arquivo vazio ou ilegível.");
+                return;
+            }
+            try {
+                setVessels(currentVessels => {
+                    let updatedVessels = JSON.parse(JSON.stringify(currentVessels)); 
+
+                    const records = content.split(/(?=BALSA;|TANQUE;|CALIBRACAO;)/g).filter(r => r.trim());
+
+                    for (const record of records) {
+                        const parts = record.split(';').map(p => p.trim());
+                        const type = parts[0];
+
+                        switch (type) {
+                            case 'BALSA': {
+                                const [, externalId, name, owner, issueDate, expiryDate, capacity, notes] = parts;
+                                if (!externalId || !name) throw new Error(`Linha BALSA inválida: ${record}`);
+
+                                let vessel = updatedVessels.find((v: Vessel) => v.externalId === externalId);
+                                if (vessel) { // Update
+                                    vessel.name = name;
+                                    vessel.owner = owner;
+                                    vessel.issueDate = issueDate;
+                                    vessel.expiryDate = expiryDate;
+                                    vessel.totalTheoreticalCapacity = parseInt(capacity, 10) || vessel.totalTheoreticalCapacity;
+                                    vessel.notes = notes || vessel.notes;
+                                } else { // Create
+                                    updatedVessels.push({
+                                        id: Date.now() + Math.random(), externalId, name, owner, issueDate, expiryDate,
+                                        totalTheoreticalCapacity: parseInt(capacity, 10) || 0,
+                                        notes: notes || '', type: 'balsa-tanque', certificateNumber: '', executor: '', tanks: []
+                                    });
+                                }
+                                break;
+                            }
+                            case 'TANQUE': {
+                                const [, balsaId, tankId, tankName, maxHeight, maxVolume] = parts;
+                                if (!balsaId || !tankId || !tankName) throw new Error(`Linha TANQUE inválida: ${record}`);
+                                
+                                const vessel = updatedVessels.find((v: Vessel) => v.externalId === balsaId);
+                                if (!vessel) throw new Error(`Balsa com ID ${balsaId} não encontrada para o tanque ${tankId}.`);
+                                
+                                let tank = vessel.tanks.find((t: VesselTank) => t.externalId === tankId);
+                                if (tank) { // Update tank
+                                    tank.tankName = tankName;
+                                    tank.maxCalibratedHeight = parseInt(maxHeight, 10) || tank.maxCalibratedHeight;
+                                    tank.maxVolume = parseInt(maxVolume, 10) || tank.maxVolume;
+                                } else { // Create tank
+                                    vessel.tanks.push({
+                                        id: Date.now() + Math.random(), externalId: tankId, tankName,
+                                        maxCalibratedHeight: parseInt(maxHeight, 10) || 0,
+                                        maxVolume: parseInt(maxVolume, 10) || 0,
+                                        calibrationCurve: []
+                                    });
+                                }
+                                break;
+                            }
+                            case 'CALIBRACAO': {
+                                const [, tankId, trimStr, heightStr, volumeStr] = parts;
+                                if (!tankId) throw new Error(`Linha CALIBRACAO inválida: ${record}`);
+                                
+                                let foundTank: VesselTank | undefined;
+                                for (const vessel of updatedVessels) {
+                                    const tank = vessel.tanks.find((t: VesselTank) => t.externalId === tankId);
+                                    if (tank) {
+                                        foundTank = tank;
+                                        break;
+                                    }
+                                }
+                                if (!foundTank) throw new Error(`Tanque com ID ${tankId} não encontrado para calibração.`);
+
+                                const trim = parseInt(trimStr.replace('+', ''), 10);
+                                const height = parseFloat(heightStr.replace(',', '.'));
+                                const volume = parseInt(volumeStr, 10);
+                                if (!isNaN(trim) && !isNaN(height) && !isNaN(volume)) {
+                                    const pointExists = foundTank.calibrationCurve.some(p => p.trim === trim && p.height === height);
+                                    if (!pointExists) {
+                                       foundTank.calibrationCurve.push({ trim, height, volume });
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    return updatedVessels;
+                });
+                alert("Importação de embarcações concluída com sucesso!");
+            } catch (error) {
+                console.error("Erro na importação de embarcações:", error);
+                alert(`Ocorreu um erro durante a importação: ${(error as Error).message}`);
+            }
+        };
+        reader.readAsText(file);
+    };
+
+
+    const handleEditTankWagon = (tankWagonId: number | 'new') => {
+        setSelectedTankWagonId(tankWagonId);
+        setActiveView('tankWagonDetail');
+    };
+
+    const handleDeleteTankWagon = (tankWagonId: number) => {
+        setTankWagons(prev => prev.filter(tw => tw.id !== tankWagonId));
+    };
+
+    const handleSaveTankWagon = (wagonToSave: TankWagon) => {
+        const wagonExists = tankWagons.some(tw => tw.id === wagonToSave.id);
+        if (wagonExists) {
+            setTankWagons(prev => prev.map(tw => (tw.id === wagonToSave.id ? wagonToSave : tw)));
+        } else {
+            setTankWagons(prev => [...prev, wagonToSave]);
+        }
+        handleBackToRegistrationHub();
+    };
+    
+    const handleNavigateToTankWagonImport = () => {
+        setActiveView('tankWagonImport');
+    };
+
+    const handleSaveImportedTankWagons = (wagonsToUpsert: TankWagon[]) => {
+        setTankWagons(prevWagons => {
+            const wagonMap = new Map(prevWagons.map(w => [w.name, w]));
+            wagonsToUpsert.forEach(newWagon => {
+                const existing = prevWagons.find(w => w.name === newWagon.name);
+                if (existing) {
+                    newWagon.id = existing.id; // Preserve ID on update
+                }
+                wagonMap.set(newWagon.name, newWagon);
+            });
+            return Array.from(wagonMap.values());
+        });
+        setActiveView('registrationHub');
+    };
+
+    const handleDataReset = () => {
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.reload();
+    };
+
+    const handleBackupData = () => {
+        const backupData: { [key: string]: any } = {};
+        LOCAL_STORAGE_KEYS.forEach(key => {
+            const data = localStorage.getItem(key);
+            if (data) {
+                backupData[key] = JSON.parse(data);
+            }
+        });
+        const json = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        a.download = `backup_bluemultimodal_${timestamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleRestoreData = async (file: File) => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target?.result as string);
+                let valid = true;
+                // Simple validation: check if at least one expected key exists
+                if (typeof data !== 'object' || !LOCAL_STORAGE_KEYS.some(key => key in data)) {
+                    valid = false;
+                }
+                
+                if (valid) {
+                    Object.keys(data).forEach(key => {
+                        if (LOCAL_STORAGE_KEYS.includes(key)) {
+                            localStorage.setItem(key, JSON.stringify(data[key]));
+                        }
+                    });
+                    alert("Backup restaurado com sucesso! A aplicação será recarregada.");
+                    window.location.reload();
+                } else {
+                    alert("Arquivo de backup inválido.");
+                }
+            } catch (error) {
+                alert("Erro ao ler o arquivo de backup.");
+            }
+        };
+        reader.readAsText(file);
+    };
+
+
+    const renderContent = () => {
+        switch (activeView) {
+            case 'planningHub':
+                return <PlanningHubScreen onSelectModal={(modal) => {
+                    if (modal === 'fluvial') setActiveView('operationsHub');
+                }} />;
+            case 'operationsHub':
+                return <OperationsHubScreen 
+                            schedule={schedule}
+                            onStartOperation={handleStartOperationFromSchedule}
+                            onRegisterArrival={handleArrivalRegistration}
+                            onStartDischarge={handleStartDischargeOperation}
+                            onViewOperation={handleViewOperation}
+                            onNewOperation={handleNewManualOperation}
+                            onFinalizeTrip={handleFinalizeTrip}
+                            onGenerateReport={handleGenerateReportFromSchedule}
+                        />;
+            case 'registrationHub':
+                 return <RegistrationHubScreen 
+                            locations={locations}
+                            setLocations={setLocations}
+                            simpleAssets={simpleAssets}
+                            setSimpleAssets={setSimpleAssets}
+                            vessels={vessels}
+                            onEditVessel={handleEditVessel}
+                            onDeleteVessel={handleDeleteVessel}
+                            onImportVessel={handleVesselTxtImport}
+                            tankWagons={tankWagons}
+                            onEditTankWagon={handleEditTankWagon}
+                            onDeleteTankWagon={handleDeleteTankWagon}
+                            onImportTankWagon={handleNavigateToTankWagonImport}
+                        />;
+            case 'operation':
+                return (
+                    <OperationScreen
+                        operationDetails={operationDetails}
+                        setOperationDetails={setOperationDetails}
+                        tanks={tanks}
+                        vessels={vessels}
+                        signatures={signatures}
+                        setSignatures={setSignatures}
+                        analysisResult={analysisResult}
+                        isAnalyzing={isAnalyzing}
+                        onAddTank={addTank}
+                        onUpdateTank={updateTank}
+                        onDeleteTank={deleteTank}
+                        onDuplicateTank={duplicateTank}
+                        onCalcAll={calculateAll}
+                        onAIAnalysis={handleAIAnalysis}
+                        onSave={saveProject}
+                        onLoad={loadProject}
+                        onNew={handleNewManualOperation}
+                        onExport={() => exportToCsv(operationDetails, tanks, vessels)}
+                        onReport={generateReport}
+                        onConclude={handleConcludeOperation}
+                        activeSchedule={activeSchedule}
+                        onUpdateSchedule={updateActiveSchedule}
+                        activeOperationType={activeOperationType}
+                    />
+                );
+            case 'dashboard':
+                return <DashboardScreen 
+                    vessels={vessels} 
+                    schedule={schedule}
+                    dashboardOrder={dashboardOrder}
+                    setDashboardOrder={setDashboardOrder}
+                />;
+            case 'settings':
+                return (
+                    <main className="max-w-8xl mx-auto p-4 md:p-8">
+                        <SettingsScreen 
+                            onReset={handleDataReset} 
+                            onBackup={handleBackupData}
+                            onRestore={handleRestoreData}
+                        />
+                    </main>
+                );
+            case 'vesselDetail':
+                const vessel = selectedVesselId === 'new' ? undefined : vessels.find(v => v.id === selectedVesselId);
+                if (selectedVesselId !== 'new' && !vessel) {
+                    setActiveView('registrationHub');
+                    return null;
+                }
+                const breadcrumbItemsVessel = [
+                    { label: 'Central de Cadastros', onClick: handleBackToRegistrationHub },
+                    { label: vessel ? vessel.name : 'Nova Embarcação' }
+                ];
+                return (
+                    <main className="max-w-8xl mx-auto p-4 md:p-8">
+                        <Breadcrumb items={breadcrumbItemsVessel} />
+                        <VesselScreen 
+                            key={String(selectedVesselId)}
+                            vessel={vessel} 
+                            onSave={handleSaveVessel} 
+                            onBack={handleBackToRegistrationHub} 
+                        />
+                    </main>
+                );
+            case 'tankWagonDetail':
+                const tankWagon = selectedTankWagonId === 'new' ? undefined : tankWagons.find(tw => tw.id === selectedTankWagonId);
+                 if (selectedTankWagonId !== 'new' && !tankWagon) {
+                    setActiveView('registrationHub');
+                    return null;
+                }
+                const breadcrumbItemsWagon = [
+                    { label: 'Central de Cadastros', onClick: handleBackToRegistrationHub },
+                    { label: tankWagon ? tankWagon.name : 'Novo Vagão-Tanque' }
+                ];
+                 return (
+                    <main className="max-w-8xl mx-auto p-4 md:p-8">
+                         <Breadcrumb items={breadcrumbItemsWagon} />
+                         <TankWagonScreen
+                            key={String(selectedTankWagonId)}
+                            tankWagon={tankWagon}
+                            onSave={handleSaveTankWagon}
+                            onBack={handleBackToRegistrationHub}
+                         />
+                    </main>
+                );
+            case 'tankWagonImport':
+                return (
+                    <main className="max-w-8xl mx-auto p-4 md:p-8">
+                        <Breadcrumb items={[
+                            { label: 'Central de Cadastros', onClick: handleBackToRegistrationHub },
+                            { label: 'Importar Certificado de Vagão-Tanque' }
+                        ]} />
+                        <TankWagonImportScreen
+                            existingTankWagons={tankWagons}
+                            onSave={handleSaveImportedTankWagons}
+                            onBack={handleBackToRegistrationHub}
+                        />
+                    </main>
+                );
+            default:
+                 return <PlanningHubScreen onSelectModal={(modal) => {
+                    if (modal === 'fluvial') setActiveView('operationsHub');
+                }} />;
+        }
+    };
+    
+    if (activeView === 'login') {
+        return <LoginScreen onEnter={handleEnterDashboard} />;
+    }
+
+    const currentActiveView = () => {
+        if (activeView === 'vesselDetail' || activeView === 'tankWagonDetail' || activeView === 'tankWagonImport') return 'registrationHub';
+        if (activeView === 'operation' && activeScheduleId) return 'operationsHub';
+        if (activeView === 'operation' && !activeScheduleId) return 'operationsHub';
+        return activeView;
+    }
 
     return (
-        <div className="min-h-screen md:pl-20">
-            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} action={toast.action} />}
-            {isMobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />}
-
-            <Header theme={theme} setTheme={setTheme} isMobileMenuOpen={isMobileMenuOpen} setIsMobileMenuOpen={setIsMobileMenuOpen} onLock={handleLock} notifications={notifications} setNotifications={setNotifications} />
+        <div className="min-h-screen bg-background">
+            <Header 
+                onHome={handleHome} 
+                theme={theme} 
+                setTheme={setTheme} 
+                setView={setActiveView} 
+                activeView={currentActiveView()}
+                navOrder={navOrder}
+                setNavOrder={setNavOrder}
+                onLogout={handleLogout}
+            />
             
-            <main className="transition-all duration-300">
-                <Routes>
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                    <Route path="/dashboard" element={<DashboardScreen vessels={vessels} schedule={schedule} />} />
-                    <Route path="/planning" element={<MultimodalPlanningScreen />} />
-                    <Route path="/planning/pipeline" element={<DutoviarioPlanningScreen onBack={() => navigate('/planning')} setSchedules={setDutoviarioSchedules} showToast={showToast} />} />
-                    <Route path="/planning/rail" element={<FerroviarioPlanningCenterScreen planningGoals={planningGoals.filter(p => p.modal === 'ferroviario')} setPlanningGoals={setPlanningGoals} schedules={ferroviarioSchedules} setSchedules={setFerroviarioSchedules} allPlanningGoals={planningGoals} onViewProgramming={(goalId) => navigate(`/planning/rail/${goalId}`)} planningType="Trem" onBack={() => navigate('/planning')} showToast={showToast} appSettings={appSettings} onStartOperation={handleStartFerroviarioLoading} />} />
-                    <Route path="/planning/rail/:goalId" element={<FerroviarioProgrammingScreen planningGoal={planningGoals.find(g => g.id === Number(useParams().goalId))!} allPlanningGoals={planningGoals} schedule={ferroviarioSchedules} setSchedule={setFerroviarioSchedules} onBackToCenter={() => navigate('/planning/rail')} onBackToHub={() => navigate('/planning')} onStartOperation={handleStartFerroviarioLoading} showToast={showToast} />} />
-                    <Route path="/planning/rail/loading/:scheduleId" element={<FerroviarioLoadingScreen schedule={ferroviarioSchedules.find(s => s.id === Number(useParams().scheduleId))!} onUpdateSchedule={(updated) => setFerroviarioSchedules(prev => prev.map(s => s.id === updated.id ? updated : s))} onBack={() => navigate(-1)} showToast={showToast} />} />
-                    <Route path="/planning/fluvial" element={<FluvialPlanningCenterScreen planningGoals={planningGoals.filter(p => p.modal === 'fluvial')} setPlanningGoals={setPlanningGoals} schedules={schedule} setSchedules={setSchedule} vessels={vessels} allPlanningGoals={planningGoals} onViewProgramming={(goalId) => navigate(`/planning/fluvial/${goalId}`)} planningType="Balsa" onBack={() => navigate('/planning')} showToast={showToast} appSettings={appSettings} onStartOperation={handleStartLoading} onRegisterArrival={handleRegisterArrival} onStartDischarge={handleStartDischarge} onFinalizeTrip={handleFinalizeTrip} />} />
-                    <Route path="/planning/fluvial/:goalId" element={<FluvialProgrammingScreen planningGoal={planningGoals.find(g => g.id === Number(useParams().goalId))!} allPlanningGoals={planningGoals} schedule={schedule} setSchedule={setSchedule} vessels={vessels} onBackToCenter={() => navigate('/planning/fluvial')} onBackToHub={() => navigate('/planning')} onStartOperation={handleStartLoading} onRegisterArrival={handleRegisterArrival} onStartDischarge={handleStartDischarge} onFinalizeTrip={handleFinalizeTrip} onGenerateReport={() => {}} showToast={showToast} />} />
-                    <Route path="/planning/maritime" element={<FluvialPlanningCenterScreen planningGoals={planningGoals.filter(p => p.modal === 'maritimo')} setPlanningGoals={setPlanningGoals} schedules={schedule} setSchedules={setSchedule} vessels={vessels} allPlanningGoals={planningGoals} onViewProgramming={(goalId) => navigate(`/planning/maritime/${goalId}`)} planningType="Navio" onBack={() => navigate('/planning')} showToast={showToast} appSettings={appSettings} onStartOperation={handleStartLoading} onRegisterArrival={handleRegisterArrival} onStartDischarge={handleStartDischarge} onFinalizeTrip={handleFinalizeTrip} />} />
-                    <Route path="/planning/maritime/:goalId" element={<FluvialProgrammingScreen planningGoal={planningGoals.find(g => g.id === Number(useParams().goalId))!} allPlanningGoals={planningGoals} schedule={schedule} setSchedule={setSchedule} vessels={vessels} onBackToCenter={() => navigate('/planning/maritime')} onBackToHub={() => navigate('/planning')} onStartOperation={handleStartLoading} onRegisterArrival={handleRegisterArrival} onStartDischarge={handleStartDischarge} onFinalizeTrip={handleFinalizeTrip} onGenerateReport={() => {}} showToast={showToast} />} />
-                    <Route path="/planning/road" element={<RodoviarioPlanningScreen onBack={() => navigate('/planning')} schedules={rodoviarioSchedules} setSchedules={setRodoviarioSchedules} showToast={showToast} />} />
-                    <Route path="/planning/air" element={<AereoPlanningScreen onBack={() => navigate('/planning')} schedules={aereoSchedules} setSchedules={setAereoSchedules} showToast={showToast} />} />
-                    <Route path="/operations-hub" element={<OperationsHubScreen unifiedSchedules={unifiedSchedules} onNewOperation={() => { newOperation(true); navigate('/operation'); }} />} />
-                    <Route path="/operation" element={<OperationScreen operationDetails={operationDetails} setOperationDetails={setOperationDetails} tanks={tanks} setSignatures={setSignatures} vessels={vessels} signatures={signatures} analysisResult={analysisResult} isAnalyzing={isAnalyzing} onAddTank={addTank} onUpdateTank={updateTank} onDeleteTank={deleteTank} onDuplicateTank={duplicateTank} onCalcAll={calculateAllTanks} onAIAnalysis={handleAIAnalysis} onSave={() => {}} onLoad={() => {}} onNew={newOperation} onConclude={concludeOperation} onExport={() => exportToCsv(operationDetails, tanks, signatures, vessels)} onReport={() => {}} activeSchedule={activeScheduleForOperation} onUpdateSchedule={(updated) => setSchedule(prev => prev.map(s => s.id === updated.id ? updated : s))} activeOperationType={activeOperationType} onBack={() => navigate('/operations-hub')} appSettings={appSettings} />} />
-                    <Route path="/stock-control" element={<StockControlScreen locations={locations} stockTransactions={stockTransactions} setStockTransactions={setStockTransactions} showToast={showToast} />} />
-                    <Route path="/cost-control" element={<CostControlScreen costItems={costItems} setCostItems={setCostItems} allSchedules={unifiedSchedules} unitCosts={unitCosts} setUnitCosts={setUnitCosts} showToast={showToast} />} />
-                    <Route path="/registration-hub" element={<RegistrationHubScreen locations={locations} setLocations={setLocations} simpleAssets={simpleAssets} setSimpleAssets={setSimpleAssets} vessels={vessels} setVessels={setVessels} onEditVessel={(id) => navigate(`/registration-hub/vessel/${id}`)} onDeleteVessel={handleDeleteVessel} showToast={showToast} />} />
-                    <Route path="/registration-hub/bulk-edit" element={<BulkEditScreen vessels={vessels} setVessels={setVessels} showToast={showToast} onBack={() => navigate('/registration-hub')} />} />
-                    <Route path="/registration-hub/vessel/:id" element={<VesselScreen vessel={vessels.find(v => v.id === Number(useParams().id)) || (useParams().id === 'new' ? undefined : null)} onSave={handleSaveVessel} onBack={() => navigate('/registration-hub')} />} />
-                    <Route path="/backoffice" element={<BackofficeScreen orders={orders} setOrders={setOrders} showToast={showToast} />} />
-                    <Route path="/settings" element={<SettingsScreen onCreateBackup={() => {}} onRestoreBackup={() => {}} onResetSystem={() => setIsResetConfirmOpen(true)} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />} />
-                    <Route path="/reports" element={<ReportsScreen fluvialSchedules={schedule} ferroviarioSchedules={ferroviarioSchedules} rodoviarioSchedules={rodoviarioSchedules} dutoviarioSchedules={dutoviarioSchedules} aereoSchedules={aereoSchedules} />} />
-                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                </Routes>
-            </main>
-
-            <button onClick={() => setIsMobileMenuOpen(true)} className="fixed top-4 left-4 z-30 p-2 rounded-lg bg-card/50 backdrop-blur-sm border md:hidden">
-                <MenuIcon className="h-5 w-5"/>
-            </button>
-            <ConfirmationModal isOpen={isResetConfirmOpen} onClose={() => setIsResetConfirmOpen(false)} onConfirm={() => {}} title="Confirmar Reinicialização do Sistema" confirmText="Sim, Apagar Tudo" variant="destructive">
-                <p>Você tem certeza que deseja apagar TODOS os dados do sistema?</p>
-                <p className="font-bold text-destructive">Esta ação é irreversível e não pode ser desfeita.</p>
-            </ConfirmationModal>
+            <div className="pl-20">
+                {renderContent()}
+            </div>
         </div>
     );
 };

@@ -53,8 +53,6 @@ export const LacreManager: React.FC<LacreManagerProps> = ({ lacres, onLacreChang
                     placeholder="Adicionar número do lacre"
                     className="flex-grow min-w-[200px]"
                     containerClassName="flex-grow"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
                 />
                 <Button variant="secondary" onClick={handleAddClick} icon={<PlusCircleIcon className="h-4 w-4" />}>Adicionar</Button>
                 <Button variant="secondary" onClick={() => setIsQrModalOpen(true)} icon={<QrCodeIcon className="h-4 w-4" />}>Ler QR</Button>

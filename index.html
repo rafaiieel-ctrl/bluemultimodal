@@ -3,8 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Blue Multimodal</title>
-    <link rel="icon" href="/public/logo.svg" type="image/svg+xml" />
+    <title>QC Biofuels Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12,59 +11,51 @@
     <style>
       :root {
         --background: 0 0% 100%;
-        --foreground: 224 71.4% 4.1%;
+        --foreground: 222 47% 11%;
         --card: 0 0% 100%;
-        --card-foreground: 224 71.4% 4.1%;
+        --card-foreground: 222 47% 11%;
         --popover: 0 0% 100%;
-        --popover-foreground: 224 71.4% 4.1%;
-        --primary: 221.2 83.2% 53.3%;
-        --primary-foreground: 210 20% 98%;
-        --secondary: 220 14.3% 95.9%;
-        --secondary-foreground: 220 8.9% 46.1%;
-        --muted: 220 14.3% 95.9%;
-        --muted-foreground: 220 8.9% 46.1%;
-        --accent: 220 14.3% 95.9%;
-        --accent-foreground: 224 71.4% 4.1%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 210 20% 98%;
-        --border: 220 13% 91%;
-        --input: 220 13% 91%;
-        --ring: 221.2 83.2% 53.3%;
+        --popover-foreground: 222 47% 11%;
+        --primary: 217 91% 60%;
+        --primary-foreground: 210 40% 98%;
+        --secondary: 210 40% 96%;
+        --secondary-foreground: 222 47% 11%;
+        --muted: 210 40% 96%;
+        --muted-foreground: 215 20% 65%;
+        --accent: 210 40% 96%;
+        --accent-foreground: 222 47% 11%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 217 91% 60%;
       }
       .dark {
-        --background: 224 71.4% 4.1%;
-        --foreground: 210 20% 98%;
-        --card: 224 71.4% 4.1%;
-        --card-foreground: 210 20% 98%;
-        --popover: 224 71.4% 4.1%;
-        --popover-foreground: 210 20% 98%;
-        --primary: 217.2 91.2% 59.8%;
-        --primary-foreground: 210 20% 98%;
-        --secondary: 215 27.9% 16.9%;
-        --secondary-foreground: 210 20% 98%;
-        --muted: 215 27.9% 16.9%;
-        --muted-foreground: 217.9 10.6% 64.9%;
-        --accent: 215 27.9% 16.9%;
-        --accent-foreground: 210 20% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 210 20% 98%;
-        --border: 215 27.9% 16.9%;
-        --input: 215 27.9% 16.9%;
-        --ring: 217.2 91.2% 59.8%;
-      }
-      .dark select option {
-        background: hsl(var(--popover));
-        color: hsl(var(--popover-foreground));
+        --background: 222 47% 11%;
+        --foreground: 210 40% 98%;
+        --card: 222 47% 13%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222 47% 11%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 217 91% 60%;
+        --primary-foreground: 210 40% 98%;
+        --secondary: 217 33% 19%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217 33% 17%;
+        --muted-foreground: 215 20% 65%;
+        --accent: 217 33% 25%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 217 33% 22%;
+        --input: 217 33% 17%;
+        --ring: 217 91% 70%;
       }
       body {
         font-family: 'Inter', sans-serif;
-        background-image: 
-          radial-gradient(
-            1000px circle at var(--mouse-x, -1000px) var(--mouse-y, -1000px),
-            hsla(var(--primary), 0.12),
-            transparent 40%
-          );
-        transition: background-color .3s, color .3s;
+        background-image: radial-gradient(hsl(var(--muted)) 1px, transparent 0);
+        background-size: 40px 40px;
+        background-position: -19px -19px;
       }
       @keyframes fadeIn {
         from { 
@@ -78,196 +69,6 @@
       }
       .animate-fade-in {
         animation: fadeIn 0.6s cubic-bezier(0.21, 0.61, 0.35, 1) forwards;
-      }
-      
-      @keyframes fadeOut {
-        from {
-          opacity: 1;
-        }
-        to {
-          opacity: 0;
-          transform: translateY(-20px);
-        }
-      }
-
-      /* --- New Splash Screen Animations --- */
-      @keyframes fadeInUp {
-          from {
-              opacity: 0;
-              transform: translateY(30px);
-          }
-          to {
-              opacity: 1;
-              transform: translateY(0);
-          }
-      }
-
-      @keyframes backgroundShimmer {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-      }
-      
-      @keyframes wave {
-          to {
-              transform: translateX(-50%);
-          }
-      }
-
-      /* New Splash Screen Styles */
-      body.splash-active {
-        --blue1: #0A65FF;
-        --blue2: #021027;
-        --white: #ffffff;
-        
-        min-height: 100vh;
-        background: linear-gradient(135deg, var(--blue2) 0%, var(--blue1) 50%, var(--blue2) 100%);
-        background-size: 300% 300%;
-        animation: backgroundShimmer 20s ease-in-out infinite;
-        color: var(--white);
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        position: relative; /* For pseudo-elements */
-        overflow: hidden; /* Hide wave overflow */
-      }
-      body.splash-active::before,
-      body.splash-active::after {
-          content: "";
-          position: absolute;
-          left: 0;
-          bottom: 0;
-          width: 200%; /* Wider for seamless animation */
-          height: 120px;
-          background-size: 50% 100%; /* Repeat background twice */
-          background-repeat: repeat-x;
-          animation: wave 15s linear infinite;
-      }
-      body.splash-active::before {
-          /* Back wave */
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 120'%3E%3Cpath d='M0,80 C250,40 350,120 500,80 C650,40 750,120 1000,80 L1000,120 L0,120 Z' fill='rgba(10,101,255,0.3)'%3E%3C/path%3E%3C/svg%3E");
-          z-index: 2;
-          animation-duration: 25s;
-          animation-direction: reverse;
-          opacity: 0.7;
-          bottom: -5px; /* Fix for visual gap */
-      }
-      body.splash-active::after {
-          /* Front wave */
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 120'%3E%3Cpath d='M0,90 C200,120 300,50 500,90 C700,120 800,50 1000,90 L1000,120 L0,120 Z' fill='rgba(2,16,39,0.5)'%3E%3C/path%3E%3C/svg%3E");
-          z-index: 1;
-          bottom: -10px; /* Overlap slightly */
-          animation-duration: 18s;
-      }
-      
-      body.splash-active #root {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-      }
-      body.splash-active *, body.splash-active *::before, body.splash-active *::after {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-
-      body.splash-active .splash-container {
-        width: min(480px, 95vw);
-        background: rgba(3, 12, 26, 0.25);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 24px;
-        padding: 2.8rem 2.4rem 2.2rem;
-        text-align: center;
-        box-shadow: 0 16px 70px rgba(0, 0, 0, 0.4);
-        position: relative; /* To be on top of waves */
-        z-index: 10;
-      }
-      
-      /* Animated elements */
-      body.splash-active .splash-container > * {
-        opacity: 0;
-        animation: fadeInUp 0.9s cubic-bezier(0.19, 1, 0.22, 1) forwards;
-      }
-
-      body.splash-active .logo-container { animation-delay: 0.1s; }
-      body.splash-active h1 { animation-delay: 0.2s; }
-      body.splash-active p.slogan { animation-delay: 0.3s; }
-      body.splash-active .divider { animation-delay: 0.4s; }
-      body.splash-active .btn { animation-delay: 0.5s; }
-      body.splash-active .footer-text { animation-delay: 0.6s; }
-      
-      body.splash-active .logo-container {
-        width: 80px;
-        height: 80px;
-        margin: 0 auto 1.8rem;
-        border-radius: 24px;
-        background: linear-gradient(140deg, rgba(255, 255, 255, 0.1), rgba(2, 92, 255, 0));
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        display: grid;
-        place-items: center;
-        backdrop-filter: blur(5px);
-        -webkit-backdrop-filter: blur(5px);
-        transition: transform 0.3s ease;
-      }
-
-      body.splash-active .logo-container:hover {
-        transform: scale(1.05);
-      }
-
-      body.splash-active h1 {
-        font-size: clamp(2.2rem, 5vw, 2.8rem);
-        font-weight: 800;
-        line-height: 1.1;
-        letter-spacing: -0.02em;
-        margin-bottom: 0.8rem;
-        color: var(--white);
-      }
-      body.splash-active p.slogan {
-        font-size: 1.05rem;
-        opacity: 0.8;
-        margin-bottom: 1.8rem;
-      }
-      body.splash-active .divider {
-        width: 50%;
-        height: 1px;
-        margin: 0.7rem auto 1.8rem;
-        background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.45) 50%, rgba(255,255,255,0) 100%);
-      }
-      body.splash-active .btn {
-        background: var(--white);
-        color: var(--blue1);
-        border: none;
-        padding: 0.9rem 1.8rem;
-        border-radius: 999px;
-        font-weight: 700;
-        cursor: pointer;
-        font-size: 1rem;
-        transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
-        width: 100%;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 20px rgba(10, 101, 255, 0.2);
-      }
-      body.splash-active .btn:hover {
-        transform: translateY(-2px) scale(1.01);
-        box-shadow: 0 8px 15px rgba(10, 101, 255, 0.3), 0 4px 6px rgba(0, 0, 0, 0.1);
-      }
-      body.splash-active .footer-text {
-        margin-top: 1.6rem;
-        font-size: 0.75rem;
-        opacity: 0.5;
-      }
-
-      @media (max-width: 460px) {
-        body.splash-active .splash-container {
-          padding: 2.3rem 1.5rem 1.6rem;
-        }
-        body.splash-active h1 {
-          font-size: 2.1rem;
-        }
-        body.splash-active p.slogan {
-          font-size: 1rem;
-        }
       }
     </style>
     <script>
@@ -320,11 +121,7 @@
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@zxing/library": "https://aistudiocdn.com/@zxing/library@^0.21.3",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@6.25.1",
-    "react-router-dom/": "https://aistudiocdn.com/react-router-dom@6.25.1/",
-    "react-router": "https://aistudiocdn.com/react-router@6.25.1",
-    "react-router/": "https://aistudiocdn.com/react-router@6.25.1/"
+    "@zxing/library": "https://aistudiocdn.com/@zxing/library@^0.21.3"
   }
 }
 </script>

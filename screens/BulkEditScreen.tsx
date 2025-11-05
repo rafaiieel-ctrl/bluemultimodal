@@ -1,300 +1,215 @@
 
-import React, { useState, useRef } from 'react';
-import { Vessel, VesselTank, CalibrationPoint, EquipmentType } from '../types';
+
+import React, { useState } from 'react';
+import { Vessel, VesselTank, CalibrationPoint } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Select } from '../components/ui/Select';
 import { Textarea } from '../components/ui/Textarea';
-import { Loader2Icon, UploadIcon } from '../components/ui/icons';
-import { brToNumber } from '../utils/helpers';
-import { Breadcrumb } from '../components/ui/Breadcrumb';
+import { ConfirmationModal } from '../components/modals/ConfirmationModal';
+import { Loader2Icon } from '../components/ui/icons';
 
 interface BulkEditScreenProps {
     vessels: Vessel[];
-    setVessels: React.Dispatch<React.SetStateAction<Vessel[]>>;
-    onBack: () => void;
-    showToast: (message: string, type?: 'success' | 'error') => void;
+    onVesselUpdate: (vesselId: number, newTanks: VesselTank[]) => void;
 }
 
-interface ImportSummary {
-    vesselsCreated: number;
-    vesselsUpdated: number;
-    tanksCreated: number;
-    tanksUpdated: number;
-    calibrationPointsAdded: number;
-    errors: string[];
-}
+type ProcessMode = 'add_update' | 'replace';
 
-export const BulkEditScreen: React.FC<BulkEditScreenProps> = ({ vessels, setVessels, onBack, showToast }) => {
+export const BulkEditScreen: React.FC<BulkEditScreenProps> = ({ vessels, onVesselUpdate }) => {
+    const [selectedVesselId, setSelectedVesselId] = useState<string>('');
     const [textData, setTextData] = useState('');
+    const [processMode, setProcessMode] = useState<ProcessMode>('add_update');
+    const [feedback, setFeedback] = useState({ type: '', message: '' });
     const [isProcessing, setIsProcessing] = useState(false);
-    const [summary, setSummary] = useState<ImportSummary | null>(null);
-    
-    // --- IMPORT LOGIC ---
-    const processBalsaLine = (parts: string[], currentVessels: Vessel[], summary: ImportSummary): Vessel[] => {
-        const [, externalId, name, ownerOrExecutor, issueDate, expiryDate, certificateNumber, ...notesParts] = parts;
-        const notes = notesParts.join(';');
-        if (!externalId || !name) {
-            summary.errors.push(`Linha BALSA inválida (sem ID ou Nome): ${parts.join(';')}`);
-            return currentVessels;
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+
+    const handleProcessClick = () => {
+        if (processMode === 'replace') {
+            setIsConfirmModalOpen(true);
+        } else {
+            processData();
         }
-
-        const vesselIndex = currentVessels.findIndex(v => v.externalId === externalId && v.externalId);
-
-        if (vesselIndex > -1) { // Update existing
-            summary.vesselsUpdated++;
-            const updatedVessel = {
-                ...currentVessels[vesselIndex],
-                name,
-                owner: ownerOrExecutor,
-                executor: ownerOrExecutor,
-                issueDate,
-                expiryDate,
-                certificateNumber: certificateNumber || currentVessels[vesselIndex].certificateNumber,
-                notes: notes || currentVessels[vesselIndex].notes,
-            };
-            return currentVessels.map((v, i) => i === vesselIndex ? updatedVessel : v);
-        } else { // Create new
-            summary.vesselsCreated++;
-            const newVessel: Vessel = {
-                id: Date.now() + Math.random(),
-                externalId,
-                name,
-                owner: ownerOrExecutor || '',
-                executor: ownerOrExecutor || '',
-                issueDate: issueDate || '',
-                expiryDate: expiryDate || '',
-                certificateNumber: certificateNumber || '',
-                totalTheoreticalCapacity: 0,
-                notes: notes || '',
-                type: 'balsa-tanque',
-                tanks: []
-            };
-            return [...currentVessels, newVessel];
-        }
-    };
-
-    const processTankLine = (parts: string[], currentVessels: Vessel[], summary: ImportSummary): Vessel[] => {
-        const [, balsaId, tankId, tankName, maxHeight, maxVolume] = parts;
-        if (!balsaId || !tankId || !tankName) {
-             summary.errors.push(`Linha TANQUE inválida: ${parts.join(';')}`);
-             return currentVessels;
-        }
-
-        const vesselIndex = currentVessels.findIndex(v => v.externalId === balsaId && v.externalId);
-        if (vesselIndex === -1) {
-            summary.errors.push(`Balsa com ID ${balsaId} não encontrada para o tanque ${tankId}.`);
-            return currentVessels;
-        }
-        
-        const vessel = currentVessels[vesselIndex];
-        const tankIndex = vessel.tanks.findIndex(t => t.externalId === tankId && t.externalId);
-
-        let newTanks: VesselTank[];
-
-        if (tankIndex > -1) { // Update existing tank
-            summary.tanksUpdated++;
-            const updatedTank = {
-                ...vessel.tanks[tankIndex],
-                tankName,
-                maxCalibratedHeight: brToNumber(maxHeight) || vessel.tanks[tankIndex].maxCalibratedHeight,
-                maxVolume: brToNumber(maxVolume) || vessel.tanks[tankIndex].maxVolume,
-            };
-            newTanks = vessel.tanks.map((t, i) => i === tankIndex ? updatedTank : t);
-        } else { // Create new tank
-            summary.tanksCreated++;
-            const newTank: VesselTank = {
-                id: Date.now() + Math.random(),
-                externalId: tankId,
-                tankName,
-                maxCalibratedHeight: brToNumber(maxHeight) || 0,
-                maxVolume: brToNumber(maxVolume) || 0,
-                calibrationCurve: []
-            };
-            newTanks = [...vessel.tanks, newTank];
-        }
-
-        const updatedVessel = { ...vessel, tanks: newTanks };
-        return currentVessels.map((v, i) => i === vesselIndex ? updatedVessel : v);
     };
     
-    const processCalibracaoLine = (parts: string[], currentVessels: Vessel[], summary: ImportSummary): Vessel[] => {
-        const [, tankId, trimStr, heightStr, volumeStr] = parts;
-        if (!tankId) {
-             summary.errors.push(`Linha CALIBRACAO inválida (sem ID de tanque): ${parts.join(';')}`);
-             return currentVessels;
+    const confirmAndProcess = () => {
+        setIsConfirmModalOpen(false);
+        processData();
+    }
+
+    const processData = () => {
+        if (!selectedVesselId || !textData) {
+            setFeedback({ type: 'error', message: 'Selecione uma embarcação e cole os dados.' });
+            return;
         }
-
-        let vesselIndex = -1;
-        let tankIndex = -1;
-        let targetVessel: Vessel | undefined;
-
-        for(let i=0; i < currentVessels.length; i++){
-            const tIndex = currentVessels[i].tanks.findIndex(t => t.externalId === tankId && t.externalId);
-            if(tIndex > -1) {
-                vesselIndex = i;
-                tankIndex = tIndex;
-                targetVessel = currentVessels[i];
-                break;
-            }
-        }
-        
-        if (!targetVessel) {
-            summary.errors.push(`Tanque com ID ${tankId} não encontrado para calibração.`);
-            return currentVessels;
-        }
-        
-        const trim = parseInt(trimStr.replace('+', ''), 10);
-        const height = brToNumber(heightStr);
-        const volume = brToNumber(volumeStr);
-
-        if (isNaN(trim) || isNaN(height) || isNaN(volume)) {
-            summary.errors.push(`Dados de calibração inválidos para o tanque ${tankId}: ${parts.join(';')}`);
-            return currentVessels;
-        }
-        
-        const targetTank = targetVessel.tanks[tankIndex];
-        const curve = targetTank.calibrationCurve;
-        const pointIndex = curve.findIndex(p => p.trim === trim && p.height === height);
-
-        let newCurve: CalibrationPoint[];
-
-        if(pointIndex > -1) { // Update if exists
-            const existingPoint = curve[pointIndex];
-            if (existingPoint.volume !== volume) {
-                 summary.calibrationPointsAdded++;
-                 const updatedPoint = { ...existingPoint, volume };
-                 newCurve = curve.map((p, i) => i === pointIndex ? updatedPoint : p);
-            } else {
-                newCurve = curve; // No change
-            }
-        } else { // Add if not exists
-            summary.calibrationPointsAdded++;
-            newCurve = [...curve, { trim, height, volume }];
-        }
-
-        const updatedTank = { ...targetTank, calibrationCurve: newCurve };
-        const updatedTanks = targetVessel.tanks.map((t, i) => i === tankIndex ? updatedTank : t);
-        const updatedVessel = { ...targetVessel, tanks: updatedTanks };
-        
-        return currentVessels.map((v, i) => i === vesselIndex ? updatedVessel : v);
-    };
-
-    const processImportedData = (records: string[]): { newVessels: Vessel[], summary: ImportSummary } => {
-        let currentVessels = [...vessels];
-        const summary: ImportSummary = {
-            vesselsCreated: 0,
-            vesselsUpdated: 0,
-            tanksCreated: 0,
-            tanksUpdated: 0,
-            calibrationPointsAdded: 0,
-            errors: [],
-        };
-
-        for (const record of records) {
-            try {
-                const parts = record.split(';').map(p => p.trim());
-                const type = parts[0];
-        
-                switch (type) {
-                    case 'BALSA':
-                        currentVessels = processBalsaLine(parts, currentVessels, summary);
-                        break;
-                    case 'TANQUE':
-                        currentVessels = processTankLine(parts, currentVessels, summary);
-                        break;
-                    case 'CALIBRACAO':
-                        currentVessels = processCalibracaoLine(parts, currentVessels, summary);
-                        break;
-                    default:
-                        if (record.trim()) {
-                            summary.errors.push(`Tipo de linha desconhecido ignorado: ${type}`);
-                        }
-                }
-            } catch (e: any) {
-                summary.errors.push(e.message || `Erro ao processar linha: ${record}`);
-            }
-        }
-        
-        const affectedVesselIds = new Set<string | undefined>(records.map(r => r.split(';')[1]));
-        
-        currentVessels = currentVessels.map(v => {
-            if (affectedVesselIds.has(v.externalId)) {
-                const totalCapacity = v.tanks.reduce((sum, tank) => sum + (tank.maxVolume || 0), 0);
-                return {...v, totalTheoreticalCapacity: totalCapacity};
-            }
-            return v;
-        });
-
-        return { newVessels: currentVessels, summary };
-    };
-    
-    const handleProcess = () => {
         setIsProcessing(true);
-        setSummary(null);
+        setFeedback({ type: '', message: '' });
 
-        setTimeout(() => {
-            const records = textData.split(/(?=BALSA;|TANQUE;|CALIBRACAO;)/g).filter(r => r.trim());
-            const { newVessels, summary: importSummary } = processImportedData(records);
-            setVessels(newVessels);
-            setSummary(importSummary);
-            setIsProcessing(false);
-            showToast('Processamento concluído. Verifique o resumo.', importSummary.errors.length > 0 ? 'error' : 'success');
+        setTimeout(() => { // Simulate processing time
+            try {
+                const vesselIdNum = parseInt(selectedVesselId, 10);
+                const vesselToUpdate = vessels.find(v => v.id === vesselIdNum);
+                if (!vesselToUpdate) throw new Error("Embarcação não encontrada.");
+
+                const lines = textData.split('\n').filter(line => line.trim() !== '');
+                const parsedTanksMap = new Map<string, VesselTank>();
+                let currentVesselId: string | null = null;
+
+                lines.forEach(line => {
+                    const parts = line.split(';').map(p => p.trim());
+                    const type = parts[0];
+
+                    if (type === 'TANQUE') {
+                        const [, balsaId, tankId, tankName, maxHeight, maxVolume] = parts;
+                        if (!tankId || !tankName) return; // Skip invalid tank lines
+                        
+                        // Heuristic: If BALSA; line is missing, assume the first BALSA_ID found is the one we are working on.
+                        if (!currentVesselId) currentVesselId = balsaId;
+                        
+                        parsedTanksMap.set(tankId, {
+                            id: Date.now() + Math.random(), // Temp ID
+                            externalId: tankId,
+                            tankName,
+                            maxCalibratedHeight: parseInt(maxHeight, 10) || 0,
+                            maxVolume: parseInt(maxVolume, 10) || 0,
+                            calibrationCurve: []
+                        });
+                    } else if (type === 'CALIBRACAO') {
+                        const [, tankId, trimStr, heightStr, volumeStr] = parts;
+                        const tank = parsedTanksMap.get(tankId);
+                        if (tank) {
+                            const trim = parseInt(trimStr.replace('+', ''), 10);
+                            const height = parseFloat(heightStr);
+                            const volume = parseInt(volumeStr, 10);
+                            if (!isNaN(trim) && !isNaN(height) && !isNaN(volume)) {
+                                tank.calibrationCurve.push({ trim, height, volume });
+                            }
+                        }
+                    }
+                });
+
+                let finalTanks: VesselTank[];
+                let newCount = 0;
+                let updatedCount = 0;
+
+                if (processMode === 'replace') {
+                    finalTanks = Array.from(parsedTanksMap.values());
+                    newCount = finalTanks.length;
+                } else { // add_update
+                    const existingTanks = new Map<string | undefined, VesselTank>(vesselToUpdate.tanks.map(t => [t.externalId, t]));
+                    
+                    parsedTanksMap.forEach((parsedTank, externalId) => {
+                        const existingTank = existingTanks.get(externalId);
+                        if (existingTank) {
+                            const updatedTank: VesselTank = {
+                                ...existingTank,
+                                tankName: parsedTank.tankName,
+                                maxCalibratedHeight: parsedTank.maxCalibratedHeight,
+                                maxVolume: parsedTank.maxVolume,
+                                calibrationCurve: parsedTank.calibrationCurve,
+                            };
+                            existingTanks.set(externalId, updatedTank);
+                            updatedCount++;
+                        } else {
+                            existingTanks.set(externalId, parsedTank);
+                            newCount++;
+                        }
+                    });
+                    finalTanks = Array.from(existingTanks.values());
+                }
+                
+                onVesselUpdate(vesselIdNum, finalTanks);
+                setFeedback({ type: 'success', message: `Processamento concluído! ${newCount} tanque(s) adicionado(s), ${updatedCount} tanque(s) atualizado(s).` });
+                setTextData('');
+
+            } catch (error) {
+                setFeedback({ type: 'error', message: (error as Error).message });
+            } finally {
+                setIsProcessing(false);
+            }
         }, 500);
     };
 
-    const breadcrumbItems = [
-        { label: 'Central de Cadastros', onClick: onBack },
-        { label: 'Colar Dados em Lote' }
-    ];
-
     return (
         <main className="max-w-8xl mx-auto p-4 md:p-8">
-            <Breadcrumb items={breadcrumbItems} />
             <div className="mb-8">
-                <h1 className="text-3xl font-bold tracking-tight">Importação em Lote por Texto</h1>
-                <p className="text-muted-foreground">Cole os dados de um arquivo para cadastrar ou atualizar embarcações em massa.</p>
+                <h1 className="text-3xl font-bold tracking-tight">Edição em Lote de Tanques</h1>
+                <p className="text-muted-foreground">Adicione ou atualize tanques de embarcações colando dados no formato TXT.</p>
             </div>
             <Card>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div>
-                        <Textarea 
-                            label="Cole os dados do arquivo TXT aqui"
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="md:col-span-1 space-y-4">
+                        <Select
+                            label="1. Selecione a Embarcação"
+                            value={selectedVesselId}
+                            onChange={(e) => setSelectedVesselId(e.target.value)}
+                        >
+                            <option value="" disabled>Selecione...</option>
+                            {vessels
+                                .filter(v => v.type === 'balsa-tanque')
+                                .map(vessel => (
+                                    <option key={vessel.id} value={vessel.id}>{vessel.name}</option>
+                                ))
+                            }
+                        </Select>
+                        
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">2. Escolha o Modo</label>
+                            <div className="flex flex-col gap-2">
+                                <label className="flex items-center p-3 border rounded-md has-[:checked]:bg-secondary has-[:checked]:border-primary transition-colors cursor-pointer">
+                                    <input type="radio" name="process-mode" value="add_update" checked={processMode === 'add_update'} onChange={() => setProcessMode('add_update')} className="w-4 h-4 accent-primary"/>
+                                    <div className="ml-3">
+                                        <p className="font-semibold">Adicionar ou Atualizar</p>
+                                        <p className="text-xs text-muted-foreground">Adiciona novos tanques e atualiza existentes com o mesmo ID.</p>
+                                    </div>
+                                </label>
+                                <label className="flex items-center p-3 border rounded-md has-[:checked]:bg-secondary has-[:checked]:border-destructive transition-colors cursor-pointer">
+                                    <input type="radio" name="process-mode" value="replace" checked={processMode === 'replace'} onChange={() => setProcessMode('replace')} className="w-4 h-4 accent-primary"/>
+                                     <div className="ml-3">
+                                        <p className="font-semibold">Substituir Todos</p>
+                                        <p className="text-xs text-muted-foreground">Remove todos os tanques atuais e adiciona os novos.</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                         <Button 
+                            onClick={handleProcessClick}
+                            disabled={!selectedVesselId || !textData || isProcessing}
+                            className="w-full"
+                        >
+                            {isProcessing ? <Loader2Icon className="h-4 w-4 mr-2" /> : null}
+                            {isProcessing ? 'Processando...' : '3. Processar Dados'}
+                        </Button>
+
+                         {feedback.message && (
+                            <div className={`p-3 rounded-md text-sm ${feedback.type === 'success' ? 'bg-success-100 text-green-700' : 'bg-danger-100 text-destructive'}`}>
+                                {feedback.message}
+                            </div>
+                        )}
+                    </div>
+                    <div className="md:col-span-2">
+                         <Textarea
+                            label="Cole os dados aqui"
                             value={textData}
                             onChange={(e) => setTextData(e.target.value)}
-                            placeholder="BALSA;VLS001;VIVIAN LIS;OZIEL MUSTAFA DOS SANTOS CIA LTDA;...&#10;TANQUE;VLS001;VLS001_TQ01BB;Tanque 01 BB;...&#10;CALIBRACAO;VLS001_TQ01BB;+50;0;722"
+                            placeholder="TANQUE;TTZ001;TTZ001_TQ01BE;TANQUE 01 BE;285;146250&#10;CALIBRACAO;TTZ001_TQ01BE;+50;0;722&#10;CALIBRACAO;TTZ001_TQ01BE;+25;0;431&#10;..."
                             className="min-h-[400px] font-mono text-xs"
                         />
-                         <div className="flex gap-4 mt-4">
-                             <Button onClick={handleProcess} disabled={!textData || isProcessing} className="w-full">
-                                {isProcessing ? <Loader2Icon className="h-4 w-4 mr-2"/> : null}
-                                {isProcessing ? 'Processando...' : 'Processar Dados Colados'}
-                             </Button>
-                         </div>
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-semibold mb-4">Resumo da Importação</h3>
-                        {summary ? (
-                             <div className="space-y-2 text-sm">
-                                <p><strong>Embarcações Criadas:</strong> {summary.vesselsCreated}</p>
-                                <p><strong>Embarcações Atualizadas:</strong> {summary.vesselsUpdated}</p>
-                                <p><strong>Tanques Criados:</strong> {summary.tanksCreated}</p>
-                                <p><strong>Tanques Atualizados:</strong> {summary.tanksUpdated}</p>
-                                <p><strong>Pontos de Calibração Adicionados/Atualizados:</strong> {summary.calibrationPointsAdded}</p>
-                                {summary.errors.length > 0 && (
-                                    <div className="mt-4 pt-4 border-t">
-                                        <h4 className="font-bold text-destructive">Erros ({summary.errors.length}):</h4>
-                                        <ul className="list-disc pl-5 mt-2 text-xs text-destructive max-h-48 overflow-y-auto">
-                                            {summary.errors.map((err, i) => <li key={i}>{err}</li>)}
-                                        </ul>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <p className="text-muted-foreground">O resumo da importação aparecerá aqui após o processamento.</p>
-                        )}
                     </div>
                 </div>
             </Card>
+
+             <ConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+                onConfirm={confirmAndProcess}
+                title="Confirmar Substituição de Tanques"
+            >
+                <p>Você selecionou o modo <strong className="text-foreground">"Substituir Todos"</strong>.</p>
+                <p className="font-bold text-destructive">Esta ação irá apagar permanentemente todos os tanques e curvas de calibração existentes para a embarcação selecionada antes de adicionar os novos.</p>
+                <p>Deseja continuar?</p>
+            </ConfirmationModal>
         </main>
     );
 };

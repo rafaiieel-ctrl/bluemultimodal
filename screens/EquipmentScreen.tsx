@@ -6,7 +6,7 @@ import { Vessel, EquipmentType, VesselTank, CalibrationPoint, MeasurementLog, Me
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Trash2Icon, PlusCircleIcon, ShipIcon } from '../components/ui/icons';
-import { getCertificateStatus, brToNumber } from '../utils/helpers';
+import { getCertificateStatus } from '../utils/helpers';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 
 interface EquipmentScreenProps {
@@ -104,8 +104,7 @@ export const EquipmentScreen: React.FC<EquipmentScreenProps> = ({ vessels, setVe
     };
     
     const processBalsaLine = (parts: string[], currentVessels: Vessel[]): Vessel[] => {
-        const [, externalId, name, ownerOrExecutor, issueDate, expiryDate, certificateNumber, ...notesParts] = parts;
-        const notes = notesParts.join(';');
+        const [, externalId, name, owner, issueDate, expiryDate, capacity, notes] = parts;
         if (!externalId || !name) throw new Error("Linha BALSA inválida. ID e Nome são obrigatórios.");
 
         const vesselIndex = currentVessels.findIndex(v => v.externalId === externalId);
@@ -114,12 +113,12 @@ export const EquipmentScreen: React.FC<EquipmentScreenProps> = ({ vessels, setVe
             const updatedVessel = {
                 ...currentVessels[vesselIndex],
                 name,
-                owner: ownerOrExecutor,
-                executor: ownerOrExecutor,
+                owner,
                 issueDate,
                 expiryDate,
-                certificateNumber: certificateNumber || currentVessels[vesselIndex].certificateNumber,
-                notes: notes || currentVessels[vesselIndex].notes,
+                totalTheoreticalCapacity: parseInt(capacity, 10) || currentVessels[vesselIndex].totalTheoreticalCapacity,
+                notes: notes ? notes.replace(/,/g, ';') : currentVessels[vesselIndex].notes,
+                type: 'balsa-tanque' as EquipmentType
             };
             return currentVessels.map((v, i) => i === vesselIndex ? updatedVessel : v);
         } else { // Create new
@@ -127,14 +126,14 @@ export const EquipmentScreen: React.FC<EquipmentScreenProps> = ({ vessels, setVe
                 id: Date.now() + Math.random(),
                 externalId,
                 name,
-                owner: ownerOrExecutor || '',
-                executor: ownerOrExecutor || '',
-                issueDate: issueDate || '',
-                expiryDate: expiryDate || '',
-                certificateNumber: certificateNumber || '',
-                totalTheoreticalCapacity: 0,
-                notes: notes || '',
+                owner,
+                issueDate,
+                expiryDate,
+                totalTheoreticalCapacity: parseInt(capacity, 10) || 0,
+                notes: notes ? notes.replace(/,/g, ';') : '',
                 type: 'balsa-tanque',
+                certificateNumber: '',
+                executor: '',
                 tanks: []
             };
             return [...currentVessels, newVessel];
@@ -157,8 +156,8 @@ export const EquipmentScreen: React.FC<EquipmentScreenProps> = ({ vessels, setVe
             const updatedTank = {
                 ...vessel.tanks[tankIndex],
                 tankName,
-                maxCalibratedHeight: brToNumber(maxHeight) || vessel.tanks[tankIndex].maxCalibratedHeight,
-                maxVolume: brToNumber(maxVolume) || vessel.tanks[tankIndex].maxVolume,
+                maxCalibratedHeight: parseInt(maxHeight, 10) || vessel.tanks[tankIndex].maxCalibratedHeight,
+                maxVolume: parseInt(maxVolume, 10) || vessel.tanks[tankIndex].maxVolume,
             };
             newTanks = vessel.tanks.map((t, i) => i === tankIndex ? updatedTank : t);
         } else { // Create new tank
@@ -166,8 +165,8 @@ export const EquipmentScreen: React.FC<EquipmentScreenProps> = ({ vessels, setVe
                 id: Date.now() + Math.random(),
                 externalId: tankId,
                 tankName,
-                maxCalibratedHeight: brToNumber(maxHeight) || 0,
-                maxVolume: brToNumber(maxVolume) || 0,
+                maxCalibratedHeight: parseInt(maxHeight, 10) || 0,
+                maxVolume: parseInt(maxVolume, 10) || 0,
                 calibrationCurve: []
             };
             newTanks = [...vessel.tanks, newTank];
@@ -198,8 +197,8 @@ export const EquipmentScreen: React.FC<EquipmentScreenProps> = ({ vessels, setVe
         if (!targetVessel) throw new Error(`Tanque com ID ${tankId} não encontrado para calibração.`);
         
         const trim = parseInt(trimStr.replace('+', ''), 10);
-        const height = brToNumber(heightStr);
-        const volume = brToNumber(volumeStr);
+        const height = parseFloat(heightStr);
+        const volume = parseInt(volumeStr, 10);
 
         if (isNaN(trim) || isNaN(height) || isNaN(volume)) throw new Error(`Dados de calibração inválidos para o tanque ${tankId}`);
         

@@ -1,6 +1,6 @@
 {
-  "name": " Blue Multimodal 1.1.1",
-  "description": "Sistema de gestão de logística multimodal.",
+  "name": "Copy of Copy of  Portal Multimodal 2.1.5 - Com nova tela",
+  "description": "An advanced tool for biofuel quality control based on NBR 5992, featuring multi-tank calculations, digital signatures, QR code scanning for seals, and an AI-powered report analyst.",
   "requestFramePermissions": [
     "camera"
   ]

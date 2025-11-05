@@ -1,23 +1,21 @@
 
-
 import React, { useMemo } from 'react';
-import { Tank, AppSettings } from '../../types';
+import { Tank } from '../../types';
 import { Card } from '../ui/Card';
-import { numberToBr, formatQuantity } from '../../utils/helpers';
+import { numberToBr } from '../../utils/helpers';
 
 interface SummaryBarProps {
     tanks: Tank[];
-    appSettings: AppSettings;
 }
 
-const SummaryItem: React.FC<{ label: string, value: string }> = ({ label, value }) => (
+const SummaryItem: React.FC<{ label: string, value: string, unit: string }> = ({ label, value, unit }) => (
     <div className="flex justify-between items-baseline border-b border-border/50 pb-2">
         <p className="text-sm text-muted-foreground">{label}</p>
-        <p className="text-lg font-semibold font-mono">{value}</p>
+        <p className="text-lg font-semibold font-mono">{value} <span className="text-sm font-normal text-muted-foreground">{unit}</span></p>
     </div>
 );
 
-export const SummaryBar: React.FC<SummaryBarProps> = ({ tanks, appSettings }) => {
+export const SummaryBar: React.FC<SummaryBarProps> = ({ tanks }) => {
     const summary = useMemo(() => {
         const totalV20 = tanks.reduce((sum, t) => sum + (isFinite(t.results.v20) ? t.results.v20 : 0), 0);
         
@@ -38,10 +36,10 @@ export const SummaryBar: React.FC<SummaryBarProps> = ({ tanks, appSettings }) =>
         <Card>
             <h2 className="text-lg font-semibold mb-4 text-foreground">Resumo da Operação</h2>
             <div className="space-y-3">
-                <SummaryItem label="Tanques" value={`${tanks.length.toString()} unidades`} />
-                <SummaryItem label="V@20 Total" value={formatQuantity(summary.totalV20, 'L', appSettings.units, 3)} />
-                <SummaryItem label="INPM Médio" value={`${numberToBr(summary.avgInpm, 2)} %`} />
-                <SummaryItem label="ρ@20 Médio" value={`${numberToBr(summary.avgR20, 2)} kg/m³`} />
+                <SummaryItem label="Tanques" value={tanks.length.toString()} unit="unidades" />
+                <SummaryItem label="V@20 Total" value={numberToBr(summary.totalV20, 3)} unit="L" />
+                <SummaryItem label="INPM Médio" value={numberToBr(summary.avgInpm, 2)} unit="%" />
+                <SummaryItem label="ρ@20 Médio" value={numberToBr(summary.avgR20, 2)} unit="kg/m³" />
             </div>
         </Card>
     );

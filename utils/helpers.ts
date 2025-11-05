@@ -1,5 +1,4 @@
-
-import { OperationDetails, Signatures, Tank, Vessel, VesselSchedule, VesselPerformanceStatus, UnitSettings } from "../types";
+import { OperationDetails, Signatures, Tank, Vessel, VesselSchedule, VesselPerformanceStatus } from "../types";
 
 export const nowLocal = (): string => {
     try {
@@ -19,117 +18,22 @@ export const brToNumber = (value: string | number): number => {
 
 export const numberToBr = (value: number, decimals: number = 2): string => {
     if (!isFinite(value)) return '—';
-    return new Intl.NumberFormat('pt-BR', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-    }).format(value);
+    return value.toFixed(decimals).replace('.', ',');
 };
 
-// --- Unit Conversion and Formatting Helpers ---
-
-export const getUnitLabel = (type: 'volume' | 'mass', settings: UnitSettings): string => {
-    if (type === 'volume') return settings.volume;
-    return settings.mass;
-};
-
-export const formatQuantity = (value: number, baseUnit: 'L' | 'Kg', settings: UnitSettings, decimals?: number): string => {
-    if (!isFinite(value)) return '—';
-
-    if (baseUnit === 'L') {
-        if (settings.volume === 'm³') {
-            return `${numberToBr(value / 1000, decimals ?? 3)} m³`;
-        }
-        return `${numberToBr(value, decimals ?? 0)} L`;
-    }
-
-    if (baseUnit === 'Kg') {
-        if (settings.mass === 't') {
-            return `${numberToBr(value / 1000, decimals ?? 3)} t`;
-        }
-        return `${numberToBr(value, decimals ?? 0)} Kg`;
-    }
-    return numberToBr(value, decimals ?? 2); // fallback
-};
-
-export const parseQuantity = (value: string, baseUnit: 'L' | 'Kg', settings: UnitSettings): number => {
-    const numValue = brToNumber(value);
-    if (!isFinite(numValue)) return NaN;
-
-    if (baseUnit === 'L' && settings.volume === 'm³') {
-        return numValue * 1000;
-    }
-    if (baseUnit === 'Kg' && settings.mass === 't') {
-        return numValue * 1000;
-    }
-    return numValue;
-};
-
-export const displayQuantity = (value: number, baseUnit: 'L' | 'Kg', settings: UnitSettings): string => {
-    if (!isFinite(value)) return '';
-
-    let displayValue: number;
-    if (baseUnit === 'L' && settings.volume === 'm³') {
-        displayValue = value / 1000;
-    } else if (baseUnit === 'Kg' && settings.mass === 't') {
-        displayValue = value / 1000;
-    } else {
-        displayValue = value;
-    }
-    
-    // Format to string with up to 3 decimal places, replacing dot with comma
-    return Number(displayValue.toFixed(3)).toLocaleString('pt-BR', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 3,
-    }).replace(/\./g, '');
-};
-
-
-// --- End Unit Helpers ---
-
-
-export const exportReportToCsv = (headers: string[], data: Record<string, any>[], filename: string) => {
-    const sep = ';';
-    const headerRow = headers.join(sep);
-    const rows = data.map(row => 
-        headers.map(header => {
-            // Simple sanitization to prevent breaking CSV format
-            let value = String(row[header] || '');
-            if (value.includes(sep) || value.includes('"') || value.includes('\n')) {
-                value = `"${value.replace(/"/g, '""')}"`;
-            }
-            return value;
-        }).join(sep)
-    );
-
-    const csvContent = [headerRow, ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', `${filename}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-};
-
-
-export const exportToCsv = (details: OperationDetails, tanks: Tank[], signatures: Signatures, vessels: Vessel[]) => {
+export const exportToCsv = (details: OperationDetails, tanks: Tank[], vessels: Vessel[]) => {
     const sep = ';';
     const headers = [
-        'OP_ID', 'OP_Tipo', 'OP_Modal', 'OP_Embarcacao', 'OP_Responsavel', 'OP_Terminal', 'OP_Local', 'OP_DataHora', 'OP_Observacoes',
+        'OP_ID', 'OP_Tipo', 'OP_Modal', 'OP_Embarcacao', 'OP_Responsavel', 'OP_Terminal', 'OP_Local', 'OP_DataHora',
         'Tanque_ID', 'Tanque_Tipo', 'Tanque_Produto', 'Tanque_Ident', 'Tanque_Num', 'Tanque_Cliente',
         'Tanque_TDesc', 'Tanque_LDesc', 'Vamb_L', 'Rho_Obs', 'T_Amostra_C', 'T_Tanque_C',
-        'Lacres', 'Res_Rho20', 'Res_FCV', 'Res_INPM', 'Res_V20_L', 'Res_Status', 'Res_Msgs',
-        'Ass_Transportador', 'Ass_Certificadora', 'Ass_Representante'
+        'Lacres', 'Res_Rho20', 'Res_FCV', 'Res_INPM', 'Res_V20_L', 'Res_Status', 'Res_Msgs'
     ];
 
     const vesselName = details.vesselId ? vessels.find(v => v.id === details.vesselId)?.name ?? '' : '';
 
-    const sigTransportador = signatures.transportador ? 'Sim' : 'Não';
-    const sigCertificadora = signatures.certificadora ? 'Sim' : 'Não';
-    const sigRepresentante = signatures.representante ? 'Sim' : 'Não';
-
     const rows = tanks.map(tank => [
-        details.id, details.type, details.modal, vesselName, details.responsavel, details.terminal, details.local, details.dateTime, details.observations || '',
+        details.id, details.type, details.modal, vesselName, details.responsavel, details.terminal, details.local, details.dateTime,
         tank.id, tank.tipo, tank.prod, tank.ident, tank.tanque, tank.cliente,
         tank.tdesc, tank.ldesc, tank.vamb, tank.rho, tank.Ta, tank.Tt,
         tank.lacres.join('|'),
@@ -138,13 +42,10 @@ export const exportToCsv = (details: OperationDetails, tanks: Tank[], signatures
         numberToBr(tank.results.inpm, 2),
         numberToBr(tank.results.v20, 3),
         tank.results.status,
-        tank.results.messages.join('|'),
-        sigTransportador,
-        sigCertificadora,
-        sigRepresentante,
+        tank.results.messages.join('|')
     ].join(sep));
 
-    const csvContent = '\uFEFF' + [headers.join(sep), ...rows].join('\n');
+    const csvContent = [headers.join(sep), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -218,13 +119,6 @@ export const generateReportHtml = (details: OperationDetails, tanks: Tank[], sig
                 <div><p class="text-sm text-gray-500">ρ@20 Médio</p><p class="text-xl font-bold">${numberToBr(avgR20, 2)} kg/m³</p></div>
                  <div><p class="text-sm text-gray-500">Total de Tanques</p><p class="text-xl font-bold">${tanks.length}</p></div>
             </section>
-
-            ${details.observations ? `
-            <section class="mb-6">
-                <h2 class="text-xl font-semibold mb-2 text-gray-700">Observações da Operação</h2>
-                <div class="bg-gray-50 p-4 rounded-lg text-sm whitespace-pre-wrap">${details.observations}</div>
-            </section>
-            ` : ''}
             
             <section class="mb-6">
                 <h2 class="text-xl font-semibold mb-2 text-gray-700">Detalhes dos Tanques</h2>
@@ -302,27 +196,4 @@ export const getPerformanceStatus = (schedule: VesselSchedule): VesselPerformanc
     }
 
     return 'NO PRAZO';
-};
-
-export const generateMailtoLink = (to: string, subject: string, body: string) => {
-    return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-};
-
-export const formatDateTime = (dateString?: string): string => {
-    if (!dateString) return '—';
-    try {
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) {
-            return 'Data Inválida';
-        }
-        return date.toLocaleString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    } catch {
-        return 'Data Inválida';
-    }
 };

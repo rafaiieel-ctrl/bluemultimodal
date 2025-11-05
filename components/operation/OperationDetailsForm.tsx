@@ -1,12 +1,15 @@
 
-
 import React, { useState } from 'react';
 import { OperationDetails, Vessel } from '../../types';
 import { Card } from '../ui/Card';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
-import { Textarea } from '../ui/Textarea';
-import { ChevronDownIcon } from '../ui/icons';
+
+const ChevronDownIcon: React.FC<{className?: string}> = ({className}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="m6 9 6 6 6-6"/>
+    </svg>
+);
 
 const VesselSelectModal: React.FC<{
     isOpen: boolean;
@@ -63,41 +66,10 @@ export const OperationDetailsForm: React.FC<{
 }> = ({ details, setDetails, vessels, isReadOnly = false }) => {
 
     const [isVesselModalOpen, setIsVesselModalOpen] = useState(false);
-    const [errors, setErrors] = useState<Partial<Record<keyof OperationDetails, string>>>({});
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setDetails({ ...details, [name]: value });
-        // Clear error on change
-        if (errors[name as keyof OperationDetails]) {
-            setErrors(prev => {
-                const newErrors = {...prev};
-                delete newErrors[name as keyof OperationDetails];
-                return newErrors;
-            });
-        }
-    };
-
-    const validateField = (name: string, value: string) => {
-        let errorMsg = '';
-        if (!value.trim()) {
-            switch(name) {
-                case 'id': errorMsg = 'O ID da operação é obrigatório.'; break;
-                case 'responsavel': errorMsg = 'O responsável é obrigatório.'; break;
-                case 'terminal': errorMsg = 'O terminal é obrigatório.'; break;
-                case 'local': errorMsg = 'O local é obrigatório.'; break;
-                case 'dateTime': errorMsg = 'A data/hora é obrigatória.'; break;
-            }
-        }
-        if (errorMsg) {
-            setErrors(prev => ({ ...prev, [name]: errorMsg }));
-        }
-    };
-
-    const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        if (isReadOnly) return;
-        const { name, value } = e.target;
-        validateField(name, value);
     };
     
     const handleVesselSelect = (vesselId: number | null) => {
@@ -120,7 +92,7 @@ export const OperationDetailsForm: React.FC<{
             <Card>
                 <h2 className="text-lg font-semibold mb-4 text-foreground">Detalhes da Operação</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
-                    <Input label="Operação" name="id" value={details.id} onChange={handleChange} onBlur={handleBlur} error={errors.id} readOnly={isReadOnly} />
+                    <Input label="Operação" name="id" value={details.id} onChange={handleChange} readOnly={isReadOnly} />
                     <Select label="Tipo de Operação" name="type" value={details.type} onChange={handleChange} disabled={isReadOnly}>
                         <option value="recebimento">Recebimento</option>
                         <option value="expedicao">Expedição</option>
@@ -161,20 +133,10 @@ export const OperationDetailsForm: React.FC<{
                         <option value="terra">Tanque de Terra</option>
                     </Select>
 
-                    <Input label="Responsável" name="responsavel" value={details.responsavel} onChange={handleChange} onBlur={handleBlur} error={errors.responsavel} />
-                    <Input label="Terminal" name="terminal" value={details.terminal} onChange={handleChange} onBlur={handleBlur} error={errors.terminal} readOnly={isReadOnly} />
-                    <Input label="Local" name="local" value={details.local} onChange={handleChange} onBlur={handleBlur} error={errors.local} readOnly={isReadOnly} />
-                    <Input label="Data de Criação" name="dateTime" type="datetime-local" value={details.dateTime} onChange={handleChange} onBlur={handleBlur} error={errors.dateTime} readOnly={isReadOnly}/>
-                    <Input label="Data de Início de Operação" name="operationStartDate" type="datetime-local" value={details.operationStartDate || ''} onChange={handleChange} onBlur={handleBlur} readOnly={isReadOnly}/>
-                    <Textarea 
-                        label="Observações da Operação" 
-                        name="observations"
-                        value={details.observations || ''}
-                        onChange={handleChange}
-                        placeholder="Notas importantes, ocorrências ou detalhes adicionais da operação..."
-                        containerClassName="lg:col-span-3"
-                        readOnly={isReadOnly}
-                    />
+                    <Input label="Responsável" name="responsavel" value={details.responsavel} onChange={handleChange} />
+                    <Input label="Terminal" name="terminal" value={details.terminal} onChange={handleChange} readOnly={isReadOnly} />
+                    <Input label="Local" name="local" value={details.local} onChange={handleChange} readOnly={isReadOnly} />
+                    <Input label="Data/Hora" name="dateTime" type="datetime-local" value={details.dateTime} onChange={handleChange} containerClassName="lg:col-span-2" readOnly={isReadOnly}/>
                 </div>
             </Card>
 
